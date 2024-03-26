@@ -53,14 +53,64 @@ func round(a float64) float64 {
 	return math.Round(a*1e7) / 1e7
 }
 
+func getCoordCount(p *geom.Polygon) int64 {
+	var r int64
+	for _, c := range p.Coordinates() {
+		r += int64(c.Length())
+	}
+	return r
+}
+
+/*
+useful debug functions
+func log(p *geom.Polygon, d int) {
+	bb := p.Envelope()
+	_min, _ := bb.Min().XY()
+	_max, _ := bb.Max().XY()
+	println("add poly", d, getCoordCount(p), fmt.Sprintf("%f,%f", _min.X, _min.Y), fmt.Sprintf("%f,%f", _max.X, _max.Y))
+}
+
+func testOverlap(ps *[]geom.Polygon, p *geom.Polygon) {
+	for _, ep := range *ps {
+		var ok bool
+		if ok, _ = geom.Overlaps(ep.AsGeometry(), p.AsGeometry()); ok {
+			//log(&ep)
+			//log(p)
+			panic("overlaps")
+		}
+		if ok, _ = geom.Contains(ep.AsGeometry(), p.AsGeometry()); ok {
+			//log(&ep)
+			//log(p)
+			panic("contains")
+		}
+		if ok, _ = geom.Contains(p.AsGeometry(), ep.AsGeometry()); ok {
+			//log(&ep)
+			//log(p)
+			panic("contains")
+		}
+	}
+}
+*/
+
 func splitPolygon(p *geom.Polygon, ps *[]geom.Polygon, lc loopContext) {
-	if len(p.Coordinates()) < 200 || lc.curDepth >= lc.maxDepth {
+	if getCoordCount(p) < 200 || lc.curDepth >= lc.maxDepth {
+		//log(p, lc.curDepth)
+		//testOverlap(ps, p)
 		*ps = append(*ps, *p)
 		return
 	}
 	bb := p.Envelope()
-	_min, _ := bb.Min().XY()
-	_max, _ := bb.Max().XY()
+	if bb.IsEmpty() {
+		return
+	}
+	var _min, _max geom.XY
+	var full bool
+	if _min, full = bb.Min().XY(); !full {
+		return
+	}
+	if _max, full = bb.Max().XY(); !full {
+		return
+	}
 	longerEdge := max(_max.X-_min.X, _max.Y-_min.Y)
 	unit := longerEdge / float64(lc.clusterSize)
 	rects := []geom.Polygon{}
@@ -68,24 +118,41 @@ func splitPolygon(p *geom.Polygon, ps *[]geom.Polygon, lc loopContext) {
 		for y := _min.Y; y < _max.Y; y += unit {
 			x0 := round(x)
 			y0 := round(y)
-			x1 := round(min(_max.X + unit))
+			x1 := round(min(_max.X, x+unit))
 			y1 := round(min(_max.Y, y+unit))
+			if x0 == x1 || y0 == y1 {
+				//skip bbox that has no area
+				continue
+			}
 			coords := []float64{x0, y0, x0, y1, x1, y1, x1, y0, x0, y0}
-			rects = append(rects, geom.NewPolygon([]geom.LineString{geom.NewLineString(geom.NewSequence(coords, geom.DimXY))}))
+			rect := geom.NewPolygon([]geom.LineString{geom.NewLineString(geom.NewSequence(coords, geom.DimXY))})
+			//log(&rect, lc.curDepth)
+			//testOverlap(&rects, &rect)
+			rects = append(rects, rect)
 		}
 	}
+	//*ps = append(*ps, rects...)
+	//return
 	var err error
 	var g geom.Geometry
+	var nlc = loopContext{lc.maxDepth, lc.curDepth + 1, lc.clusterSize}
 	for _, rect := range rects {
 		if g, err = geom.Intersection(p.AsGeometry(), rect.AsGeometry()); err != nil {
 			continue
 		}
-		var pi geom.Polygon
-		var ok bool
-		if pi, ok = g.AsPolygon(); !ok {
+		switch g.Type() {
+		case geom.TypePolygon:
+			pi := g.MustAsPolygon()
+			splitPolygon(&pi, ps, nlc)
+		case geom.TypeMultiPolygon:
+			var mp = g.MustAsMultiPolygon()
+			for i := 0; i < mp.NumPolygons(); i++ {
+				pi := mp.PolygonN(i)
+				splitPolygon(&pi, ps, nlc)
+			}
+		default:
 			continue
 		}
-		splitPolygon(&pi, ps, loopContext{lc.maxDepth, lc.curDepth + 1, lc.clusterSize})
 	}
 	//return
 }

@@ -1,118 +1,21 @@
 package geo
 
 import (
+	"os"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func TestXxx(t *testing.T) {
-	inputStr := `{
-		"type": "FeatureCollection",
-		"features": [
-		  {
-			"type": "Feature",
-			"properties": {},
-			"geometry": {
-			  "coordinates": [
-				[
-				  [
-					15.633328850387045,
-					5.867368739579277
-				  ],
-				  [
-					15.633328850387045,
-					5.772611804732421
-				  ],
-				  [
-					27.908061791638914,
-					5.772611804732421
-				  ],
-				  [
-					27.908061791638914,
-					5.867368739579277
-				  ],
-				  [
-					15.633328850387045,
-					5.867368739579277
-				  ]
-				]
-			  ],
-			  "type": "Polygon"
-			}
-		  },
-		  {
-			"type": "Feature",
-			"properties": {},
-			"geometry": {
-			  "coordinates": [
-				[
-				  [
-					16.104740059499477,
-					-3.053733232012391
-				  ],
-				  [
-					28.74877450502268,
-					-3.053733232012391
-				  ],
-				  [
-					28.74877450502268,
-					-2.7237597348550793
-				  ],
-				  [
-					16.104740059499477,
-					-2.7237597348550793
-				  ],
-				  [
-					16.104740059499477,
-					-3.053733232012391
-				  ]
-				]
-			  ],
-			  "type": "Polygon"
-			}
-		  },
-		  {
-			"type": "Feature",
-			"properties": {},
-			"geometry": {
-			  "coordinates": [
-				[
-				  [
-					6.1400038688558425,
-					25.11927407149929
-				  ],
-				  [
-					-1.0267431600085217,
-					22.576730567717604
-				  ],
-				  [
-					6.686196993279083,
-					13.970818194723009
-				  ],
-				  [
-					17.127297559174195,
-					19.58889504068914
-				  ],
-				  [
-					17.50772647909946,
-					26.127838656121696
-				  ],
-				  [
-					6.1400038688558425,
-					25.11927407149929
-				  ]
-				]
-			  ],
-			  "type": "Polygon"
-			}
-		  }
-		]
-	  }`
-	o, e := Split([]byte(inputStr), 3, 3)
-	if e != nil {
-		panic(e)
+	var input, output []byte
+	var err error
+	if input, err = os.ReadFile("input.geojson"); err != nil {
+		panic(err)
 	}
-	assert.NotNil(t, o)
+	if output, err = Split(input, 3, 3); err != nil {
+		panic(err)
+	}
+	if err = os.WriteFile("output.geojson", output, 0644); err != nil {
+		panic(err)
+	}
 	//println(string(o))
 }
