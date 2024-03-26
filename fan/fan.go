@@ -2,38 +2,38 @@ package fan
 
 import "sync"
 
-type Fan[T any] struct {
-	wg sync.WaitGroup
+type Fan[I, O any] struct {
+	wg      sync.WaitGroup
+	results []O
+	errors  []error
 }
 
-func New[T any]() *Fan[T] {
-	return &Fan[T]{
+func New[I, O any]() *Fan[I, O] {
+	return &Fan[I, O]{
 		wg: sync.WaitGroup{},
 	}
 }
 
-func (f *Fan[T]) SliceOut(s []T, fn func(T)) *Fan[T] {
-	for _, item := range s {
+func (f *Fan[I, O]) Out(s []I, fn func(I) (O, error)) *Fan[I, O] {
+	l := len(s)
+	if l == 0 {
+		return f
+	}
+	f.results = make([]O, l)
+	f.errors = make([]error, l)
+	for index, item := range s {
 		f.wg.Add(1)
-		go func(item T) {
+		go func(index int, item I) {
 			defer f.wg.Done()
-			fn(item)
-		}(item)
+			o, e := fn(item)
+			f.results[index] = o
+			f.errors[index] = e
+		}(index, item)
 	}
 	return f
 }
 
-func (f *Fan[T]) MapOut(m map[string]T, fn func(string, T)) *Fan[T] {
-	for key, item := range m {
-		f.wg.Add(1)
-		go func(key string, item T) {
-			defer f.wg.Done()
-			fn(key, item)
-		}(key, item)
-	}
-	return f
-}
-
-func (f *Fan[T]) In() {
+func (f *Fan[I, O]) In() ([]O, []error, error) {
 	f.wg.Wait()
+	return f.results, f.errors, nil
 }
