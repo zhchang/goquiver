@@ -45,6 +45,7 @@ func New(opts ...Option) *Pool {
 
 func (p *Pool) Run(task Task) {
 	if p.count < p.size || p.size == 0 {
+		p.count++
 		p.wg.Add(1)
 		go func() {
 			defer p.wg.Done()
