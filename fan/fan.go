@@ -1,17 +1,40 @@
 package fan
 
-import "sync"
+import (
+	"context"
+
+	"github.com/zhchang/goquiver/pool"
+)
 
 type Fan[I, O any] struct {
-	wg      sync.WaitGroup
-	results []O
-	errors  []error
+	results     []O
+	errors      []error
+	pool        *pool.Pool
+	ctx         context.Context
+	concurrency int
 }
 
-func New[I, O any]() *Fan[I, O] {
-	return &Fan[I, O]{
-		wg: sync.WaitGroup{},
+type Option[I, O any] func(*Fan[I, O])
+
+func WithContext[I, O any](ctx context.Context) Option[I, O] {
+	return func(f *Fan[I, O]) {
+		f.ctx = ctx
 	}
+}
+
+func WithConcurrency[I, O any](cc int) Option[I, O] {
+	return func(f *Fan[I, O]) {
+		f.concurrency = cc
+	}
+}
+
+func New[I, O any](opts ...Option[I, O]) *Fan[I, O] {
+	r := &Fan[I, O]{}
+	for _, opt := range opts {
+		opt(r)
+	}
+	r.pool = pool.New(pool.WithContext(r.ctx), pool.WithSize(r.concurrency))
+	return r
 }
 
 func (f *Fan[I, O]) Out(s []I, fn func(I) (O, error)) *Fan[I, O] {
@@ -22,18 +45,18 @@ func (f *Fan[I, O]) Out(s []I, fn func(I) (O, error)) *Fan[I, O] {
 	f.results = make([]O, l)
 	f.errors = make([]error, l)
 	for index, item := range s {
-		f.wg.Add(1)
-		go func(index int, item I) {
-			defer f.wg.Done()
-			o, e := fn(item)
-			f.results[index] = o
-			f.errors[index] = e
-		}(index, item)
+		_index := index
+		_item := item
+		f.pool.Run(func() {
+			o, e := fn(_item)
+			f.results[_index] = o
+			f.errors[_index] = e
+		})
 	}
 	return f
 }
 
 func (f *Fan[I, O]) In() ([]O, []error, error) {
-	f.wg.Wait()
-	return f.results, f.errors, nil
+	err := f.pool.UntilFinished()
+	return f.results, f.errors, err
 }
