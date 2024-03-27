@@ -21,8 +21,6 @@ func WithContext(ctx context.Context) Option {
 	return func(p *Pool) {
 		if ctx != nil {
 			p.ctx = ctx
-		} else {
-			p.ctx = context.Background()
 		}
 	}
 }
@@ -39,6 +37,9 @@ func New(opts ...Option) *Pool {
 	}
 	for _, opt := range opts {
 		opt(p)
+	}
+	if p.ctx == nil {
+		p.ctx = context.Background()
 	}
 	return p
 }
