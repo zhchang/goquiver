@@ -19,6 +19,17 @@ func (m *Map[K, V]) Set(k K, v V) {
 	m.m[k] = v
 }
 
+func (m *Map[K, V]) SetIfNotExists(k K, v V) bool {
+	defer m.Unlock()
+	m.Lock()
+	var exists bool
+	if _, exists = m.m[k]; !exists {
+		m.m[k] = v
+		return true
+	}
+	return false
+}
+
 func (m *Map[K, V]) Get(k K) (V, bool) {
 	defer m.RUnlock()
 	m.RLock()
