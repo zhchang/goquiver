@@ -30,17 +30,17 @@ const (
 	Job                      = "Job"
 )
 
-type K8sResource interface {
+type Resource interface {
 	GetNamespace() string
 	GetName() string
 	GetObjectKind() schema.ObjectKind
 }
 
-type K8sAPI[T K8sResource] interface {
+type API[T Resource] interface {
 	Create(context.Context, T, metav1.CreateOptions) (T, error)
 	Update(context.Context, T, metav1.UpdateOptions) (T, error)
 	Delete(context.Context, string, metav1.DeleteOptions) error
 	Get(context.Context, string, metav1.GetOptions) (T, error)
 }
 
-type K8sAPIGetter[T K8sResource] func(namespace string) K8sAPI[T]
+type APIGetter[T Resource] func(namespace string) API[T]

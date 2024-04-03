@@ -79,7 +79,7 @@ func decodeYAMLToObject(yamlContent string) (*unstructured.Unstructured, error) 
 	return obj, nil
 }
 
-func GenManifest(ctx context.Context, chartPath string, values map[string]any) ([]K8sResource, error) {
+func GenManifest(ctx context.Context, chartPath string, values map[string]any) ([]Resource, error) {
 	var err error
 	actionConfig := new(action.Configuration)
 	if err = actionConfig.Init(cli.New().RESTClientGetter(), "", os.Getenv("HELM_DRIVER"), func(format string, v ...interface{}) { fmt.Printf(format, v) }); err != nil {
@@ -108,14 +108,14 @@ func GenManifest(ctx context.Context, chartPath string, values map[string]any) (
 	// Split and output the manifest
 	manifest := strings.TrimSpace(rel.Manifest)
 	docs := strings.Split(manifest, "---")
-	var results []K8sResource
+	var results []Resource
 	for _, doc := range docs {
 		// Trim spaces and skip if empty
 		doc = strings.TrimSpace(doc)
 		if doc == "" {
 			continue
 		}
-		var obj K8sResource
+		var obj Resource
 		// Decode the YAML to a Kubernetes object
 		if obj, err = decodeYAMLToObject(doc); err != nil {
 			return nil, err
@@ -173,7 +173,7 @@ func WithWait(duration time.Duration) OperationOption {
 	}
 }
 
-func waitForIt[T K8sResource](ctx context.Context, api K8sAPI[T], name string, duration time.Duration) error {
+func waitForIt[T Resource](ctx context.Context, api API[T], name string, duration time.Duration) error {
 	done := make(chan error)
 	timeout, cancelFunc := context.WithTimeout(ctx, duration)
 	defer cancelFunc()
@@ -229,7 +229,7 @@ func waitForIt[T K8sResource](ctx context.Context, api K8sAPI[T], name string, d
 	}
 }
 
-func ensureResource[T K8sResource](r K8sResource) (T, error) {
+func ensureResource[T Resource](r Resource) (T, error) {
 	var t T = newResource[T]()
 	switch v := r.(type) {
 	case *unstructured.Unstructured:
@@ -245,12 +245,12 @@ func ensureResource[T K8sResource](r K8sResource) (T, error) {
 	}
 }
 
-func newResource[T K8sResource]() T {
+func newResource[T Resource]() T {
 	var t T
 	return reflect.New(reflect.TypeOf(t).Elem()).Interface().(T)
 }
 
-func rollout[T K8sResource](ctx context.Context, item K8sResource, apiGetter K8sAPIGetter[T], ops OperationOptions) error {
+func rollout[T Resource](ctx context.Context, item Resource, apiGetter APIGetter[T], ops OperationOptions) error {
 	var err error
 	var instance T
 	if instance, err = ensureResource[T](item); err != nil {
@@ -278,7 +278,7 @@ func Delete(ctx context.Context, name, namespace, kind string) error {
 	panic("implement me")
 }
 
-func Rollout(ctx context.Context, item K8sResource, options ...OperationOption) error {
+func Rollout(ctx context.Context, item Resource, options ...OperationOption) error {
 	var err error
 	if err = Init(); err != nil {
 		return err
@@ -290,83 +290,83 @@ func Rollout(ctx context.Context, item K8sResource, options ...OperationOption) 
 	kind := item.GetObjectKind().GroupVersionKind().Kind
 	switch kind {
 	case Deployment:
-		return rollout[*appsv1.Deployment](ctx, item, func(namespace string) K8sAPI[*appsv1.Deployment] {
+		return rollout[*appsv1.Deployment](ctx, item, func(namespace string) API[*appsv1.Deployment] {
 			return clientset.AppsV1().Deployments(namespace)
 		}, *ops.Clone(true))
 	case StatefulSet:
-		return rollout[*appsv1.StatefulSet](ctx, item, func(namespace string) K8sAPI[*appsv1.StatefulSet] {
+		return rollout[*appsv1.StatefulSet](ctx, item, func(namespace string) API[*appsv1.StatefulSet] {
 			return clientset.AppsV1().StatefulSets(namespace)
 		}, *ops.Clone(true))
 	case ConfigMap:
-		return rollout[*v1.ConfigMap](ctx, item, func(namespace string) K8sAPI[*v1.ConfigMap] {
+		return rollout[*v1.ConfigMap](ctx, item, func(namespace string) API[*v1.ConfigMap] {
 			return clientset.CoreV1().ConfigMaps(namespace)
 		}, *ops.Clone(false))
 	case CronJob:
-		return rollout[*batchv1.CronJob](ctx, item, func(namespace string) K8sAPI[*batchv1.CronJob] {
+		return rollout[*batchv1.CronJob](ctx, item, func(namespace string) API[*batchv1.CronJob] {
 			return clientset.BatchV1().CronJobs(namespace)
 		}, *ops.Clone(false))
 	case Service:
-		return rollout[*v1.Service](ctx, item, func(namespace string) K8sAPI[*v1.Service] {
+		return rollout[*v1.Service](ctx, item, func(namespace string) API[*v1.Service] {
 			return clientset.CoreV1().Services(namespace)
 		}, *ops.Clone(false))
 	case Ingress:
-		return rollout[*networkingv1.Ingress](ctx, item, func(namespace string) K8sAPI[*networkingv1.Ingress] {
+		return rollout[*networkingv1.Ingress](ctx, item, func(namespace string) API[*networkingv1.Ingress] {
 			return clientset.NetworkingV1().Ingresses(namespace)
 		}, *ops.Clone(false))
 	case PodDisruptionBudget:
-		return rollout[*policyv1.PodDisruptionBudget](ctx, item, func(namespace string) K8sAPI[*policyv1.PodDisruptionBudget] {
+		return rollout[*policyv1.PodDisruptionBudget](ctx, item, func(namespace string) API[*policyv1.PodDisruptionBudget] {
 			return clientset.PolicyV1().PodDisruptionBudgets(namespace)
 		}, *ops.Clone(false))
 	case Secret:
-		return rollout[*v1.Secret](ctx, item, func(namespace string) K8sAPI[*v1.Secret] {
+		return rollout[*v1.Secret](ctx, item, func(namespace string) API[*v1.Secret] {
 			return clientset.CoreV1().Secrets(namespace)
 		}, *ops.Clone(false))
 	case StorageClass:
-		return rollout[*storagev1.StorageClass](ctx, item, func(_ string) K8sAPI[*storagev1.StorageClass] {
+		return rollout[*storagev1.StorageClass](ctx, item, func(_ string) API[*storagev1.StorageClass] {
 			return clientset.StorageV1().StorageClasses()
 		}, *ops.Clone(false))
 	case PersistentVolumeClaim:
-		return rollout[*v1.PersistentVolumeClaim](ctx, item, func(namespace string) K8sAPI[*v1.PersistentVolumeClaim] {
+		return rollout[*v1.PersistentVolumeClaim](ctx, item, func(namespace string) API[*v1.PersistentVolumeClaim] {
 			return clientset.CoreV1().PersistentVolumeClaims(namespace)
 		}, *ops.Clone(false))
 	case PersistentVolume:
-		return rollout[*v1.PersistentVolume](ctx, item, func(_ string) K8sAPI[*v1.PersistentVolume] {
+		return rollout[*v1.PersistentVolume](ctx, item, func(_ string) API[*v1.PersistentVolume] {
 			return clientset.CoreV1().PersistentVolumes()
 		}, *ops.Clone(false))
 	case CustomResourceDefinition:
-		return rollout[*apiextensionsv1.CustomResourceDefinition](ctx, item, func(_ string) K8sAPI[*apiextensionsv1.CustomResourceDefinition] {
+		return rollout[*apiextensionsv1.CustomResourceDefinition](ctx, item, func(_ string) API[*apiextensionsv1.CustomResourceDefinition] {
 			return aeClientset.ApiextensionsV1().CustomResourceDefinitions()
 		}, *ops.Clone(false))
 	case ServiceAccount:
-		return rollout[*v1.ServiceAccount](ctx, item, func(namespace string) K8sAPI[*v1.ServiceAccount] {
+		return rollout[*v1.ServiceAccount](ctx, item, func(namespace string) API[*v1.ServiceAccount] {
 			return clientset.CoreV1().ServiceAccounts(namespace)
 		}, *ops.Clone(false))
 	case ClusterRole:
-		return rollout[*rbacv1.ClusterRole](ctx, item, func(_ string) K8sAPI[*rbacv1.ClusterRole] {
+		return rollout[*rbacv1.ClusterRole](ctx, item, func(_ string) API[*rbacv1.ClusterRole] {
 			return clientset.RbacV1().ClusterRoles()
 		}, *ops.Clone(false))
 	case ClusterRoleBinding:
-		return rollout[*rbacv1.ClusterRoleBinding](ctx, item, func(_ string) K8sAPI[*rbacv1.ClusterRoleBinding] {
+		return rollout[*rbacv1.ClusterRoleBinding](ctx, item, func(_ string) API[*rbacv1.ClusterRoleBinding] {
 			return clientset.RbacV1().ClusterRoleBindings()
 		}, *ops.Clone(false))
 	case Role:
-		return rollout[*rbacv1.Role](ctx, item, func(namespace string) K8sAPI[*rbacv1.Role] {
+		return rollout[*rbacv1.Role](ctx, item, func(namespace string) API[*rbacv1.Role] {
 			return clientset.RbacV1().Roles(namespace)
 		}, *ops.Clone(false))
 	case RoleBinding:
-		return rollout[*rbacv1.RoleBinding](ctx, item, func(namespace string) K8sAPI[*rbacv1.RoleBinding] {
+		return rollout[*rbacv1.RoleBinding](ctx, item, func(namespace string) API[*rbacv1.RoleBinding] {
 			return clientset.RbacV1().RoleBindings(namespace)
 		}, *ops.Clone(false))
 	case DaemonSet:
-		return rollout[*appsv1.DaemonSet](ctx, item, func(namespace string) K8sAPI[*appsv1.DaemonSet] {
+		return rollout[*appsv1.DaemonSet](ctx, item, func(namespace string) API[*appsv1.DaemonSet] {
 			return clientset.AppsV1().DaemonSets(namespace)
 		}, *ops.Clone(false))
 	case Pod:
-		return rollout[*v1.Pod](ctx, item, func(namespace string) K8sAPI[*v1.Pod] {
+		return rollout[*v1.Pod](ctx, item, func(namespace string) API[*v1.Pod] {
 			return clientset.CoreV1().Pods(namespace)
 		}, *ops.Clone(false))
 	case Job:
-		return rollout[*batchv1.Job](ctx, item, func(namespace string) K8sAPI[*batchv1.Job] {
+		return rollout[*batchv1.Job](ctx, item, func(namespace string) API[*batchv1.Job] {
 			return clientset.BatchV1().Jobs(namespace)
 		}, *ops.Clone(false))
 
