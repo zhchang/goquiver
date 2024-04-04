@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -327,9 +328,9 @@ func Remove(ctx context.Context, name, namespace, kind string, options ...Operat
 		option(&ops)
 	}
 	switch kind {
-	case Deployment:
+	case KindDeployment:
 		return remove[*appsv1.Deployment](ctx, name, clientset.AppsV1().Deployments(namespace), ops)
-	case StatefulSet:
+	case KindStatefulSet:
 		if err = remove[*appsv1.StatefulSet](ctx, name, clientset.AppsV1().StatefulSets(namespace), ops); err != nil {
 			return err
 		}
@@ -342,44 +343,44 @@ func Remove(ctx context.Context, name, namespace, kind string, options ...Operat
 			_ = remove[*v1.PersistentVolumeClaim](ctx, pvc.GetName(), clientset.CoreV1().PersistentVolumeClaims(namespace), ops)
 		}
 		return nil
-	case ConfigMap:
+	case KindConfigMap:
 		return remove[*v1.ConfigMap](ctx, name, clientset.CoreV1().ConfigMaps(namespace), ops)
-	case CronJob:
+	case KindCronJob:
 		return remove[*batchv1.CronJob](ctx, name, clientset.BatchV1().CronJobs(namespace), ops)
-	case Service:
+	case KindService:
 		return remove[*v1.Service](ctx, name, clientset.CoreV1().Services(namespace), ops)
-	case Ingress:
+	case KindIngress:
 		return remove[*networkingv1.Ingress](ctx, name, clientset.NetworkingV1().Ingresses(namespace), ops)
-	case PodDisruptionBudget:
+	case KindPodDisruptionBudget:
 		return remove[*policyv1.PodDisruptionBudget](ctx, name, clientset.PolicyV1().PodDisruptionBudgets(namespace), ops)
-	case Secret:
+	case KindSecret:
 		return remove[*v1.Secret](ctx, name, clientset.CoreV1().Secrets(namespace), ops)
-	case StorageClass:
+	case KindStorageClass:
 		return remove[*storagev1.StorageClass](ctx, name, clientset.StorageV1().StorageClasses(), ops)
-	case PersistentVolumeClaim:
+	case KindPersistentVolumeClaim:
 		return remove[*v1.PersistentVolumeClaim](ctx, name, clientset.CoreV1().PersistentVolumeClaims(namespace), ops)
-	case PersistentVolume:
+	case KindPersistentVolume:
 		return remove[*v1.PersistentVolume](ctx, name, clientset.CoreV1().PersistentVolumes(), ops)
-	case CustomResourceDefinition:
+	case KindCustomResourceDefinition:
 		return remove[*apiextensionsv1.CustomResourceDefinition](ctx, name, aeClientset.ApiextensionsV1().CustomResourceDefinitions(), ops)
-	case ServiceAccount:
+	case KindServiceAccount:
 		return remove[*v1.ServiceAccount](ctx, name, clientset.CoreV1().ServiceAccounts(namespace), ops)
-	case ClusterRole:
+	case KindClusterRole:
 		return remove[*rbacv1.ClusterRole](ctx, name, clientset.RbacV1().ClusterRoles(), ops)
-	case ClusterRoleBinding:
+	case KindClusterRoleBinding:
 		return remove[*rbacv1.ClusterRoleBinding](ctx, name, clientset.RbacV1().ClusterRoleBindings(), ops)
-	case Role:
+	case KindRole:
 		return remove[*rbacv1.Role](ctx, name, clientset.RbacV1().Roles(namespace), ops)
-	case RoleBinding:
+	case KindRoleBinding:
 		return remove[*rbacv1.RoleBinding](ctx, name, clientset.RbacV1().RoleBindings(namespace), ops)
-	case DaemonSet:
+	case KindDaemonSet:
 		return remove[*appsv1.DaemonSet](ctx, name, clientset.AppsV1().DaemonSets(namespace), ops)
-	case Pod:
+	case KindPod:
 		return remove[*v1.Pod](ctx, name, clientset.CoreV1().Pods(namespace), ops)
-	case Job:
+	case KindJob:
 		return remove[*batchv1.Job](ctx, name, clientset.BatchV1().Jobs(namespace), ops)
 	default:
-		return fmt.Errorf("remove unsupported kind: %s", kind)
+		return fmt.Errorf("[remove] unsupported kind: %s", kind)
 	}
 }
 
@@ -394,47 +395,270 @@ func Rollout(ctx context.Context, item Resource, options ...OperationOption) err
 	}
 	kind := item.GetObjectKind().GroupVersionKind().Kind
 	switch kind {
-	case Deployment:
+	case KindDeployment:
 		return rollout[*appsv1.Deployment](ctx, item, clientset.AppsV1().Deployments(item.GetNamespace()), *ops.Clone(true))
-	case StatefulSet:
+	case KindStatefulSet:
 		return rollout[*appsv1.StatefulSet](ctx, item, clientset.AppsV1().StatefulSets(item.GetNamespace()), *ops.Clone(true))
-	case ConfigMap:
+	case KindConfigMap:
 		return rollout[*v1.ConfigMap](ctx, item, clientset.CoreV1().ConfigMaps(item.GetNamespace()), *ops.Clone(false))
-	case CronJob:
+	case KindCronJob:
 		return rollout[*batchv1.CronJob](ctx, item, clientset.BatchV1().CronJobs(item.GetNamespace()), *ops.Clone(false))
-	case Service:
+	case KindService:
 		return rollout[*v1.Service](ctx, item, clientset.CoreV1().Services(item.GetNamespace()), *ops.Clone(false))
-	case Ingress:
+	case KindIngress:
 		return rollout[*networkingv1.Ingress](ctx, item, clientset.NetworkingV1().Ingresses(item.GetNamespace()), *ops.Clone(false))
-	case PodDisruptionBudget:
+	case KindPodDisruptionBudget:
 		return rollout[*policyv1.PodDisruptionBudget](ctx, item, clientset.PolicyV1().PodDisruptionBudgets(item.GetNamespace()), *ops.Clone(false))
-	case Secret:
+	case KindSecret:
 		return rollout[*v1.Secret](ctx, item, clientset.CoreV1().Secrets(item.GetNamespace()), *ops.Clone(false))
-	case StorageClass:
+	case KindStorageClass:
 		return rollout[*storagev1.StorageClass](ctx, item, clientset.StorageV1().StorageClasses(), *ops.Clone(false))
-	case PersistentVolumeClaim:
+	case KindPersistentVolumeClaim:
 		return rollout[*v1.PersistentVolumeClaim](ctx, item, clientset.CoreV1().PersistentVolumeClaims(item.GetNamespace()), *ops.Clone(false))
-	case PersistentVolume:
+	case KindPersistentVolume:
 		return rollout[*v1.PersistentVolume](ctx, item, clientset.CoreV1().PersistentVolumes(), *ops.Clone(false))
-	case CustomResourceDefinition:
+	case KindCustomResourceDefinition:
 		return rollout[*apiextensionsv1.CustomResourceDefinition](ctx, item, aeClientset.ApiextensionsV1().CustomResourceDefinitions(), *ops.Clone(false))
-	case ServiceAccount:
+	case KindServiceAccount:
 		return rollout[*v1.ServiceAccount](ctx, item, clientset.CoreV1().ServiceAccounts(item.GetNamespace()), *ops.Clone(false))
-	case ClusterRole:
+	case KindClusterRole:
 		return rollout[*rbacv1.ClusterRole](ctx, item, clientset.RbacV1().ClusterRoles(), *ops.Clone(false))
-	case ClusterRoleBinding:
+	case KindClusterRoleBinding:
 		return rollout[*rbacv1.ClusterRoleBinding](ctx, item, clientset.RbacV1().ClusterRoleBindings(), *ops.Clone(false))
-	case Role:
+	case KindRole:
 		return rollout[*rbacv1.Role](ctx, item, clientset.RbacV1().Roles(item.GetNamespace()), *ops.Clone(false))
-	case RoleBinding:
+	case KindRoleBinding:
 		return rollout[*rbacv1.RoleBinding](ctx, item, clientset.RbacV1().RoleBindings(item.GetNamespace()), *ops.Clone(false))
-	case DaemonSet:
+	case KindDaemonSet:
 		return rollout[*appsv1.DaemonSet](ctx, item, clientset.AppsV1().DaemonSets(item.GetNamespace()), *ops.Clone(false))
-	case Pod:
+	case KindPod:
 		return rollout[*v1.Pod](ctx, item, clientset.CoreV1().Pods(item.GetNamespace()), *ops.Clone(false))
-	case Job:
+	case KindJob:
 		return rollout[*batchv1.Job](ctx, item, clientset.BatchV1().Jobs(item.GetNamespace()), *ops.Clone(false))
 	default:
-		return fmt.Errorf("rollou unsupported kind: %s", kind)
+		return fmt.Errorf("[rollout] unsupported kind: %s", kind)
+	}
+}
+
+type ListOptions struct {
+	pattern *regexp.Regexp
+}
+
+type ListOption func(*ListOptions)
+
+func WithRegex(p *regexp.Regexp) ListOption {
+	return func(o *ListOptions) {
+		o.pattern = p
+	}
+}
+
+func filter[T Resource](items []T, err error, options ListOptions) ([]T, error) {
+	if err != nil {
+		return nil, err
+	}
+	if options.pattern == nil {
+		return items, nil
+	}
+	result := []T{}
+	for _, item := range items {
+		if options.pattern.MatchString(item.GetName()) {
+			result = append(result, item)
+		}
+	}
+	return result, nil
+}
+
+func into[T Resource, F any](from []F, err error, options ListOptions) ([]T, error, ListOptions) {
+	if err != nil {
+		return nil, err, options
+	}
+	var r []T
+	var a any
+	var t T
+	var ok bool
+	for _, f := range from {
+		a = &f
+		if t, ok = a.(T); !ok {
+			return r, fmt.Errorf("Wrong Value Type"), options
+		}
+		r = append(r, t)
+	}
+	return r, nil, options
+
+}
+
+func List[T Resource](ctx context.Context, namespace string, options ...ListOption) ([]T, error) {
+	var err error
+	if err = Init(); err != nil {
+		return nil, err
+	}
+	var ops ListOptions
+	for _, option := range options {
+		option(&ops)
+	}
+	var t any = newResource[T]()
+	switch t.(type) {
+	case *Deployment:
+		return filter[T](into[T, appsv1.Deployment](func() ([]appsv1.Deployment, error, ListOptions) {
+			if l, err := clientset.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{}); err == nil {
+				return l.Items, nil, ops
+			} else {
+				return nil, err, ops
+			}
+		}()))
+	case *StatefulSet:
+		return filter[T](into[T, appsv1.StatefulSet](func() ([]appsv1.StatefulSet, error, ListOptions) {
+			if l, err := clientset.AppsV1().StatefulSets(namespace).List(ctx, metav1.ListOptions{}); err == nil {
+				return l.Items, nil, ops
+			} else {
+				return nil, err, ops
+			}
+		}()))
+	case *ConfigMap:
+		return filter[T](into[T, v1.ConfigMap](func() ([]v1.ConfigMap, error, ListOptions) {
+			if l, err := clientset.CoreV1().ConfigMaps(namespace).List(ctx, metav1.ListOptions{}); err == nil {
+				return l.Items, nil, ops
+			} else {
+				return nil, err, ops
+			}
+		}()))
+	case *CronJob:
+		return filter[T](into[T, batchv1.CronJob](func() ([]batchv1.CronJob, error, ListOptions) {
+			if l, err := clientset.BatchV1().CronJobs(namespace).List(ctx, metav1.ListOptions{}); err == nil {
+				return l.Items, nil, ops
+			} else {
+				return nil, err, ops
+			}
+		}()))
+	case *Service:
+		return filter[T](into[T, v1.Service](func() ([]v1.Service, error, ListOptions) {
+			if l, err := clientset.CoreV1().Services(namespace).List(ctx, metav1.ListOptions{}); err == nil {
+				return l.Items, nil, ops
+			} else {
+				return nil, err, ops
+			}
+		}()))
+	case *Ingress:
+		return filter[T](into[T, networkingv1.Ingress](func() ([]networkingv1.Ingress, error, ListOptions) {
+			if l, err := clientset.NetworkingV1().Ingresses(namespace).List(ctx, metav1.ListOptions{}); err == nil {
+				return l.Items, nil, ops
+			} else {
+				return nil, err, ops
+			}
+		}()))
+	case *PodDisruptionBudget:
+		return filter[T](into[T, policyv1.PodDisruptionBudget](func() ([]policyv1.PodDisruptionBudget, error, ListOptions) {
+			if l, err := clientset.PolicyV1().PodDisruptionBudgets(namespace).List(ctx, metav1.ListOptions{}); err == nil {
+				return l.Items, nil, ops
+			} else {
+				return nil, err, ops
+			}
+		}()))
+	case *Secret:
+		return filter[T](into[T, v1.Secret](func() ([]v1.Secret, error, ListOptions) {
+			if l, err := clientset.CoreV1().Secrets(namespace).List(ctx, metav1.ListOptions{}); err == nil {
+				return l.Items, nil, ops
+			} else {
+				return nil, err, ops
+			}
+		}()))
+	case *StorageClass:
+		return filter[T](into[T, storagev1.StorageClass](func() ([]storagev1.StorageClass, error, ListOptions) {
+			if l, err := clientset.StorageV1().StorageClasses().List(ctx, metav1.ListOptions{}); err == nil {
+				return l.Items, nil, ops
+			} else {
+				return nil, err, ops
+			}
+		}()))
+	case *PersistentVolumeClaim:
+		return filter[T](into[T, v1.PersistentVolumeClaim](func() ([]v1.PersistentVolumeClaim, error, ListOptions) {
+			if l, err := clientset.CoreV1().PersistentVolumeClaims(namespace).List(ctx, metav1.ListOptions{}); err == nil {
+				return l.Items, nil, ops
+			} else {
+				return nil, err, ops
+			}
+		}()))
+	case *PersistentVolume:
+		return filter[T](into[T, v1.PersistentVolume](func() ([]v1.PersistentVolume, error, ListOptions) {
+			if l, err := clientset.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{}); err == nil {
+				return l.Items, nil, ops
+			} else {
+				return nil, err, ops
+			}
+		}()))
+	case *CustomResourceDefinition:
+		return filter[T](into[T, apiextensionsv1.CustomResourceDefinition](func() ([]apiextensionsv1.CustomResourceDefinition, error, ListOptions) {
+			if l, err := aeClientset.ApiextensionsV1().CustomResourceDefinitions().List(ctx, metav1.ListOptions{}); err == nil {
+				return l.Items, nil, ops
+			} else {
+				return nil, err, ops
+			}
+		}()))
+	case *ServiceAccount:
+		return filter[T](into[T, v1.ServiceAccount](func() ([]v1.ServiceAccount, error, ListOptions) {
+			if l, err := clientset.CoreV1().ServiceAccounts(namespace).List(ctx, metav1.ListOptions{}); err == nil {
+				return l.Items, nil, ops
+			} else {
+				return nil, err, ops
+			}
+		}()))
+	case *ClusterRole:
+		return filter[T](into[T, rbacv1.ClusterRole](func() ([]rbacv1.ClusterRole, error, ListOptions) {
+			if l, err := clientset.RbacV1().ClusterRoles().List(ctx, metav1.ListOptions{}); err == nil {
+				return l.Items, nil, ops
+			} else {
+				return nil, err, ops
+			}
+		}()))
+	case *ClusterRoleBinding:
+		return filter[T](into[T, rbacv1.ClusterRoleBinding](func() ([]rbacv1.ClusterRoleBinding, error, ListOptions) {
+			if l, err := clientset.RbacV1().ClusterRoleBindings().List(ctx, metav1.ListOptions{}); err == nil {
+				return l.Items, nil, ops
+			} else {
+				return nil, err, ops
+			}
+		}()))
+	case *Role:
+		return filter[T](into[T, rbacv1.Role](func() ([]rbacv1.Role, error, ListOptions) {
+			if l, err := clientset.RbacV1().Roles(namespace).List(ctx, metav1.ListOptions{}); err == nil {
+				return l.Items, nil, ops
+			} else {
+				return nil, err, ops
+			}
+		}()))
+	case *RoleBinding:
+		return filter[T](into[T, rbacv1.RoleBinding](func() ([]rbacv1.RoleBinding, error, ListOptions) {
+			if l, err := clientset.RbacV1().RoleBindings(namespace).List(ctx, metav1.ListOptions{}); err == nil {
+				return l.Items, nil, ops
+			} else {
+				return nil, err, ops
+			}
+		}()))
+	case *DaemonSet:
+		return filter[T](into[T, appsv1.DaemonSet](func() ([]appsv1.DaemonSet, error, ListOptions) {
+			if l, err := clientset.AppsV1().DaemonSets(namespace).List(ctx, metav1.ListOptions{}); err == nil {
+				return l.Items, nil, ops
+			} else {
+				return nil, err, ops
+			}
+		}()))
+	case *Pod:
+		return filter[T](into[T, v1.Pod](func() ([]v1.Pod, error, ListOptions) {
+			if l, err := clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{}); err == nil {
+				return l.Items, nil, ops
+			} else {
+				return nil, err, ops
+			}
+		}()))
+	case *Job:
+		return filter[T](into[T, batchv1.Job](func() ([]batchv1.Job, error, ListOptions) {
+			if l, err := clientset.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{}); err == nil {
+				return l.Items, nil, ops
+			} else {
+				return nil, err, ops
+			}
+		}()))
+	default:
+		return nil, fmt.Errorf("[list] unsupported type %v", reflect.TypeOf(t))
 	}
 }
