@@ -662,3 +662,69 @@ func List[T Resource](ctx context.Context, namespace string, options ...ListOpti
 		return nil, fmt.Errorf("[list] unsupported type %v", reflect.TypeOf(t))
 	}
 }
+
+func intoGet[T Resource, F Resource](f F, err error) (T, error) {
+	var t T
+	if err != nil {
+		return t, err
+	}
+	var a any = f
+	var ok bool
+	if t, ok = a.(T); !ok {
+		return t, fmt.Errorf("Wrong Value Type")
+	}
+	return t, nil
+}
+
+func Get[T Resource](ctx context.Context, name, namespace string) (T, error) {
+	var err error
+	var r T
+	if err = Init(); err != nil {
+		return r, err
+	}
+	var t any = newResource[T]()
+	switch t.(type) {
+	case *Deployment:
+		return intoGet[T, *Deployment](clientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{}))
+	case *StatefulSet:
+		return intoGet[T, *StatefulSet](clientset.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{}))
+	case *ConfigMap:
+		return intoGet[T, *ConfigMap](clientset.CoreV1().ConfigMaps(namespace).Get(ctx, name, metav1.GetOptions{}))
+	case *CronJob:
+		return intoGet[T, *CronJob](clientset.BatchV1().CronJobs(namespace).Get(ctx, name, metav1.GetOptions{}))
+	case *Service:
+		return intoGet[T, *Service](clientset.CoreV1().Services(namespace).Get(ctx, name, metav1.GetOptions{}))
+	case *Ingress:
+		return intoGet[T, *Ingress](clientset.NetworkingV1().Ingresses(namespace).Get(ctx, name, metav1.GetOptions{}))
+	case *PodDisruptionBudget:
+		return intoGet[T, *PodDisruptionBudget](clientset.PolicyV1().PodDisruptionBudgets(namespace).Get(ctx, name, metav1.GetOptions{}))
+	case *Secret:
+		return intoGet[T, *Secret](clientset.CoreV1().Secrets(namespace).Get(ctx, name, metav1.GetOptions{}))
+	case *StorageClass:
+		return intoGet[T, *StorageClass](clientset.StorageV1().StorageClasses().Get(ctx, name, metav1.GetOptions{}))
+	case *PersistentVolumeClaim:
+		return intoGet[T, *PersistentVolumeClaim](clientset.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, name, metav1.GetOptions{}))
+	case *PersistentVolume:
+		return intoGet[T, *PersistentVolume](clientset.CoreV1().PersistentVolumes().Get(ctx, name, metav1.GetOptions{}))
+	case *CustomResourceDefinition:
+		return intoGet[T, *CustomResourceDefinition](aeClientset.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, name, metav1.GetOptions{}))
+	case *ServiceAccount:
+		return intoGet[T, *ServiceAccount](clientset.CoreV1().ServiceAccounts(namespace).Get(ctx, name, metav1.GetOptions{}))
+	case *ClusterRole:
+		return intoGet[T, *ClusterRole](clientset.RbacV1().ClusterRoles().Get(ctx, name, metav1.GetOptions{}))
+	case *ClusterRoleBinding:
+		return intoGet[T, *ClusterRoleBinding](clientset.RbacV1().ClusterRoleBindings().Get(ctx, name, metav1.GetOptions{}))
+	case *Role:
+		return intoGet[T, *Role](clientset.RbacV1().Roles(namespace).Get(ctx, name, metav1.GetOptions{}))
+	case *RoleBinding:
+		return intoGet[T, *RoleBinding](clientset.RbacV1().RoleBindings(namespace).Get(ctx, name, metav1.GetOptions{}))
+	case *DaemonSet:
+		return intoGet[T, *DaemonSet](clientset.AppsV1().DaemonSets(namespace).Get(ctx, name, metav1.GetOptions{}))
+	case *Pod:
+		return intoGet[T, *Pod](clientset.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{}))
+	case *Job:
+		return intoGet[T, *Job](clientset.BatchV1().Jobs(namespace).Get(ctx, name, metav1.GetOptions{}))
+	default:
+		return r, fmt.Errorf("[get] unsupported type %v", reflect.TypeOf(t))
+	}
+}
