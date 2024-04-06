@@ -13,7 +13,9 @@ var (
 	ArrayIndexOutOfBounds = fmt.Errorf("Invalid Array Index")
 )
 
-func Get[V any](m map[string]any, key string) (V, error) {
+type Map = map[string]any
+
+func Get[V any](m Map, key string) (V, error) {
 	var ok bool
 	var r V
 	var value any
@@ -28,7 +30,7 @@ func Get[V any](m map[string]any, key string) (V, error) {
 
 func getObjectKey(object any, key any) (any, error) {
 	var slice []any
-	var mp map[string]any
+	var mp Map
 	var ok bool
 	switch k := key.(type) {
 	case int:
@@ -40,7 +42,7 @@ func getObjectKey(object any, key any) (any, error) {
 		}
 		return slice[k], nil
 	case string:
-		if mp, ok = object.(map[string]any); !ok {
+		if mp, ok = object.(Map); !ok {
 			return nil, WrongKeyType
 		}
 		var thing any
@@ -53,7 +55,7 @@ func getObjectKey(object any, key any) (any, error) {
 	}
 }
 
-func ChainGet[V any](m map[string]any, keys ...any) (V, error) {
+func ChainGet[V any](m Map, keys ...any) (V, error) {
 	var r V
 	var running any = m
 	var err error
@@ -78,4 +80,30 @@ func ChainGet[V any](m map[string]any, keys ...any) (V, error) {
 		return r, WrongValueType
 	}
 	return r, nil
+}
+
+func Merge(map1, map2 Map) Map {
+	mergedMap := Map{}
+
+	// First, copy all key-value pairs from map1 to the merged map
+	for key, value := range map1 {
+		mergedMap[key] = value
+	}
+
+	// Then, iterate over map2 and either add the key-value pair to the merged map
+	// or merge the value maps if both values are maps
+	for key, valueMap2 := range map2 {
+		if valueMap1, exists := mergedMap[key]; exists {
+			// Check if both values are maps
+			map1Conv, map1Ok := valueMap1.(Map)
+			map2Conv, map2Ok := valueMap2.(Map)
+			if map1Ok && map2Ok {
+				mergedMap[key] = Merge(map1Conv, map2Conv)
+				continue
+			}
+		}
+		// If not both maps, simply overwrite
+		mergedMap[key] = valueMap2
+	}
+	return mergedMap
 }
