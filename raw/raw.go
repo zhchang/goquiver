@@ -2,6 +2,7 @@ package raw
 
 import (
 	"fmt"
+	"reflect"
 )
 
 var (
@@ -14,6 +15,7 @@ var (
 )
 
 type Map = map[string]any
+type Slice = []any
 
 func Get[V any](m Map, key string) (V, error) {
 	var ok bool
@@ -82,6 +84,25 @@ func ChainGet[V any](m Map, keys ...any) (V, error) {
 	return r, nil
 }
 
+func mergeSlice(s1, s2 Slice) Slice {
+	var mergedSlice Slice
+	mergedSlice = append(mergedSlice, s1...)
+	for _, v2 := range s2 {
+		exists := false
+		for _, v1 := range s1 {
+			if reflect.DeepEqual(v1, v2) {
+				exists = true
+				break
+			}
+		}
+		if exists {
+			continue
+		}
+		mergedSlice = append(mergedSlice, v2)
+	}
+	return mergedSlice
+}
+
 func Merge(map1, map2 Map) Map {
 	mergedMap := Map{}
 
@@ -92,18 +113,33 @@ func Merge(map1, map2 Map) Map {
 
 	// Then, iterate over map2 and either add the key-value pair to the merged map
 	// or merge the value maps if both values are maps
-	for key, valueMap2 := range map2 {
-		if valueMap1, exists := mergedMap[key]; exists {
-			// Check if both values are maps
-			map1Conv, map1Ok := valueMap1.(Map)
-			map2Conv, map2Ok := valueMap2.(Map)
-			if map1Ok && map2Ok {
-				mergedMap[key] = Merge(map1Conv, map2Conv)
-				continue
+	for key, v2 := range map2 {
+		if v1, exists := mergedMap[key]; exists {
+			tv1 := reflect.TypeOf(v1)
+			tv2 := reflect.TypeOf(v2)
+			if tv1 == tv2 {
+				switch tv1.Kind() {
+				case reflect.Map:
+					// Check if both values are maps
+					map1Conv, map1Ok := v1.(Map)
+					map2Conv, map2Ok := v2.(Map)
+					if map1Ok && map2Ok {
+						mergedMap[key] = Merge(map1Conv, map2Conv)
+						continue
+					}
+				case reflect.Slice:
+					// Check if both values are maps
+					sv1, sv1Ok := v1.([]any)
+					sv2, sv2Ok := v2.([]any)
+					if sv1Ok && sv2Ok {
+						mergedMap[key] = mergeSlice(sv1, sv2)
+						continue
+					}
+				}
 			}
 		}
 		// If not both maps, simply overwrite
-		mergedMap[key] = valueMap2
+		mergedMap[key] = v2
 	}
 	return mergedMap
 }
