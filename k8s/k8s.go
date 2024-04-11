@@ -264,7 +264,7 @@ func waitForRollout[T Resource](ctx context.Context, api API[T], name string, du
 	}
 }
 
-func ensureResource[T Resource](r Resource) (T, error) {
+func Parse[T Resource](r Resource) (T, error) {
 	var t T = newResource[T]()
 	switch v := r.(type) {
 	case *unstructured.Unstructured:
@@ -288,7 +288,7 @@ func newResource[T Resource]() T {
 func rollout[T Resource](ctx context.Context, item Resource, api API[T], ops OperationOptions) error {
 	var err error
 	var instance T
-	if instance, err = ensureResource[T](item); err != nil {
+	if instance, err = Parse[T](item); err != nil {
 		return err
 	}
 	if _, err = api.Create(ctx, instance, metav1.CreateOptions{}); err != nil {
