@@ -70,7 +70,7 @@ func Init() error {
 	return err
 }
 
-func decodeYAMLToObject(yamlContent string) (*unstructured.Unstructured, error) {
+func DecodeYAML(yamlContent string) (Resource, error) {
 	decUnstructured := yaml.NewDecodingSerializer(unstructured.UnstructuredJSONScheme)
 	var err error
 	obj := &unstructured.Unstructured{}
@@ -80,7 +80,7 @@ func decodeYAMLToObject(yamlContent string) (*unstructured.Unstructured, error) 
 	return obj, nil
 }
 
-func DecodeYAMLToObjects(yamlContent string) ([]Resource, error) {
+func DecodeAllYAML(yamlContent string) ([]Resource, error) {
 	var err error
 	manifest := strings.TrimSpace(yamlContent)
 	docs := strings.Split(manifest, "---")
@@ -93,7 +93,7 @@ func DecodeYAMLToObjects(yamlContent string) ([]Resource, error) {
 		}
 		var obj Resource
 		// Decode the YAML to a Kubernetes object
-		if obj, err = decodeYAMLToObject(doc); err != nil {
+		if obj, err = DecodeYAML(doc); err != nil {
 			return nil, err
 		}
 		results = append(results, obj)
@@ -127,7 +127,7 @@ func GenManifest(ctx context.Context, chartPath string, values map[string]any) (
 		return nil, err
 	}
 
-	return DecodeYAMLToObjects(rel.Manifest)
+	return DecodeAllYAML(rel.Manifest)
 }
 
 func getPvcs(ctx context.Context, stsName, namespace string) ([]*v1.PersistentVolumeClaim, error) {
