@@ -80,6 +80,27 @@ func decodeYAMLToObject(yamlContent string) (*unstructured.Unstructured, error) 
 	return obj, nil
 }
 
+func DecodeYAMLToObjects(yamlContent string) ([]Resource, error) {
+	var err error
+	manifest := strings.TrimSpace(yamlContent)
+	docs := strings.Split(manifest, "---")
+	var results []Resource
+	for _, doc := range docs {
+		// Trim spaces and skip if empty
+		doc = strings.TrimSpace(doc)
+		if doc == "" {
+			continue
+		}
+		var obj Resource
+		// Decode the YAML to a Kubernetes object
+		if obj, err = decodeYAMLToObject(doc); err != nil {
+			return nil, err
+		}
+		results = append(results, obj)
+	}
+	return results, nil
+}
+
 func GenManifest(ctx context.Context, chartPath string, values map[string]any) ([]Resource, error) {
 	var err error
 	actionConfig := new(action.Configuration)
@@ -106,24 +127,7 @@ func GenManifest(ctx context.Context, chartPath string, values map[string]any) (
 		return nil, err
 	}
 
-	// Split and output the manifest
-	manifest := strings.TrimSpace(rel.Manifest)
-	docs := strings.Split(manifest, "---")
-	var results []Resource
-	for _, doc := range docs {
-		// Trim spaces and skip if empty
-		doc = strings.TrimSpace(doc)
-		if doc == "" {
-			continue
-		}
-		var obj Resource
-		// Decode the YAML to a Kubernetes object
-		if obj, err = decodeYAMLToObject(doc); err != nil {
-			return nil, err
-		}
-		results = append(results, obj)
-	}
-	return results, nil
+	return DecodeYAMLToObjects(rel.Manifest)
 }
 
 func getPvcs(ctx context.Context, stsName, namespace string) ([]*v1.PersistentVolumeClaim, error) {
