@@ -659,6 +659,14 @@ func List[T Resource](ctx context.Context, namespace string, options ...ListOpti
 				return nil, err, ops
 			}
 		}()))
+	case *HorizontalPodAutoscaler:
+		return filter[T](into[T, HorizontalPodAutoscaler](func() ([]HorizontalPodAutoscaler, error, ListOptions) {
+			if l, err := clientset.AutoscalingV2().HorizontalPodAutoscalers(namespace).List(ctx, metav1.ListOptions{}); err == nil {
+				return l.Items, nil, ops
+			} else {
+				return nil, err, ops
+			}
+		}()))
 	default:
 		return nil, fmt.Errorf("[list] unsupported type %v", reflect.TypeOf(t))
 	}
@@ -725,6 +733,8 @@ func Get[T Resource](ctx context.Context, name, namespace string) (T, error) {
 		return intoGet[T, *Pod](clientset.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{}))
 	case *Job:
 		return intoGet[T, *Job](clientset.BatchV1().Jobs(namespace).Get(ctx, name, metav1.GetOptions{}))
+	case *HorizontalPodAutoscaler:
+		return intoGet[T, *HorizontalPodAutoscaler](clientset.AutoscalingV2().HorizontalPodAutoscalers(namespace).Get(ctx, name, metav1.GetOptions{}))
 	default:
 		return r, fmt.Errorf("[get] unsupported type %v", reflect.TypeOf(t))
 	}
