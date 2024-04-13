@@ -1,3 +1,13 @@
+// Package fan provides a generic implementation of the fan-out pattern in Go.
+//
+// The main type in this package is Fan, which takes an input of type I, processes it concurrently, and produces an output of type O.
+// It uses a pool of goroutines to process the input concurrently.
+//
+// The package provides two options to customize the behavior of the Fan: WithContext and WithConcurrency.
+// WithContext allows you to specify a context that the Fan will respect.
+// WithConcurrency allows you to specify the number of goroutines that the Fan will use for processing.
+//
+// This package uses the "github.com/zhchang/goquiver/pool" package for managing the pool of goroutines.
 package fan
 
 import (

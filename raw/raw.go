@@ -1,3 +1,14 @@
+// Package raw provides utilities for working with raw data structures in Go.
+//
+// The main type in this package is Map, which is a type alias for map[string]any, and Slice, which is a type alias for []any.
+// These types are used to work with data structures where the keys and values can be of any type.
+//
+// The package provides a function Get, which retrieves a value from a Map by its key.
+// The Get function returns the value and an error. If the key is not found in the map, it returns an error.
+// If the value is found but is not of the expected type, it also returns an error.
+//
+// The package defines several error variables for common error conditions, such as keys being empty or invalid,
+// accessing an array with an out-of-bounds index, and the value not being of the expected type.
 package raw
 
 import (

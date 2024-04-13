@@ -1,6 +1,7 @@
 package raw
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -60,4 +61,21 @@ func TestMergeWithSlice(t *testing.T) {
 	va1, err1 := ChainGet[[]any](m3, "a")
 	assert.Nil(t, err1)
 	assert.Equal(t, []any{1, 2, 3}, va1)
+}
+
+func ExampleChainGet() {
+	m := map[string]any{
+		"a": map[string]any{
+			"b": []any{
+				"value0", "value1", "value2",
+			},
+		},
+	}
+	v, err := ChainGet[string](m, "a", "b", 1)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(v)
+	// Output:
+	// value1
 }

@@ -1,3 +1,12 @@
+// Package k8s provides utilities for interacting with Kubernetes (k8s) using the Helm and Kubernetes client libraries.
+//
+// It imports several packages from the Helm library to work with Helm charts and releases. It also imports the Kubernetes client libraries to interact with the Kubernetes API server.
+//
+// The package provides functionality for various Kubernetes operations, such as creating and managing resources, handling Helm charts, and managing releases.
+//
+// It also handles errors and metadata from the Kubernetes API, and can work with unstructured data, which allows it to interact with any Kubernetes resource.
+//
+// The package uses the context, fmt, os, reflect, regexp, strings, sync, and time standard library packages for various utility functions and data types.
 package k8s
 
 import (
@@ -32,6 +41,7 @@ var clientset *kubernetes.Clientset
 var aeClientset *aeclientset.Clientset
 var once sync.Once
 
+// Init initializes the k8s client, which throws error if failed to get envrioment variables: KUBECONFIG, or in-cluster config.
 func Init() error {
 	var err error
 	once.Do(func() {
@@ -63,6 +73,8 @@ func Init() error {
 	return err
 }
 
+// DecodeYAML decodes the provided YAML content into an unstructured Kubernetes resource.
+// It returns the decoded resource and any error encountered during decoding.
 func DecodeYAML(yamlContent string) (Resource, error) {
 	decUnstructured := yaml.NewDecodingSerializer(unstructured.UnstructuredJSONScheme)
 	var err error
@@ -73,6 +85,10 @@ func DecodeYAML(yamlContent string) (Resource, error) {
 	return obj, nil
 }
 
+// DecodeAllYAML decodes a YAML manifest into a slice of Kubernetes resources.
+// It splits the YAML content into individual documents, trims spaces, and decodes each document into a Kubernetes resource.
+// The decoded resources are returned as a slice.
+// If there is an error during decoding, it returns nil and the error.
 func DecodeAllYAML(yamlContent string) ([]Resource, error) {
 	var err error
 	manifest := strings.TrimSpace(yamlContent)
@@ -94,6 +110,9 @@ func DecodeAllYAML(yamlContent string) ([]Resource, error) {
 	return results, nil
 }
 
+// GenManifest generates the Kubernetes manifest from a Helm chart and values.
+// It takes a context, the path to the Helm chart, and a map of values as input.
+// It returns a slice of resources and an error.
 func GenManifest(ctx context.Context, chartPath string, values map[string]any) ([]Resource, error) {
 	var err error
 	actionConfig := new(action.Configuration)
@@ -151,22 +170,24 @@ func getPvcs(ctx context.Context, stsName, namespace string) ([]*PersistentVolum
 	return result, nil
 }
 
-type OperationOptions struct {
+type operationOptions struct {
 	wait time.Duration
 }
 
-func (o *OperationOptions) Clone(enableWait bool) *OperationOptions {
-	r := &OperationOptions{}
+func (o *operationOptions) Clone(enableWait bool) *operationOptions {
+	r := &operationOptions{}
 	if enableWait {
 		r.wait = o.wait
 	}
 	return r
 }
 
-type OperationOption func(*OperationOptions)
+type OperationOption func(*operationOptions)
 
+// WithWait sets the duration to wait before performing an operation.
+// It returns an OperationOption that can be used to configure the operation options.
 func WithWait(duration time.Duration) OperationOption {
-	return func(o *OperationOptions) {
+	return func(o *operationOptions) {
 		o.wait = duration
 	}
 }
@@ -257,6 +278,13 @@ func waitForRollout[T Resource](ctx context.Context, api API[T], name string, du
 	}
 }
 
+// Parse is a generic function that parses a resource into the specified type.
+// It takes a resource of type `Resource` and returns an instance of type `T`.
+// If the resource is of type `unstructured.Unstructured`, it uses the default unstructured converter
+// to convert the resource into the specified type `T`.
+// If the resource is already of type `T`, it returns the resource as is.
+// If the resource is of any other type, it returns a new instance of type `T` and an error indicating
+// that the type casting is unsupported.
 func Parse[T Resource](r Resource) (T, error) {
 	var t T = newResource[T]()
 	switch v := r.(type) {
@@ -278,7 +306,7 @@ func newResource[T Resource]() T {
 	return reflect.New(reflect.TypeOf(t).Elem()).Interface().(T)
 }
 
-func rollout[T Resource](ctx context.Context, item Resource, api API[T], ops OperationOptions) error {
+func rollout[T Resource](ctx context.Context, item Resource, api API[T], ops operationOptions) error {
 	var err error
 	var instance T
 	if instance, err = Parse[T](item); err != nil {
@@ -301,7 +329,7 @@ func rollout[T Resource](ctx context.Context, item Resource, api API[T], ops Ope
 	return nil
 }
 
-func remove[T Resource](ctx context.Context, name string, api API[T], ops OperationOptions) error {
+func remove[T Resource](ctx context.Context, name string, api API[T], ops operationOptions) error {
 	var err error
 	if err = api.Delete(ctx, name, metav1.DeleteOptions{}); err != nil {
 		return err
@@ -315,12 +343,43 @@ func remove[T Resource](ctx context.Context, name string, api API[T], ops Operat
 	return nil
 }
 
+// Remove removes a resource from a Kubernetes cluster.
+// It takes the following parameters:
+// - ctx: The context.Context object for the operation.
+// - name: The name of the resource to remove.
+// - namespace: The namespace of the resource.
+// - kind: The kind of the resource to remove.
+// - options: Optional operation options.
+// It returns an error if the removal operation fails.
+// The supported resource kinds are:
+// - Deployment
+// - StatefulSet
+// - ConfigMap
+// - CronJob
+// - Service
+// - Ingress
+// - PodDisruptionBudget
+// - Secret
+// - StorageClass
+// - PersistentVolumeClaim
+// - PersistentVolume
+// - CustomResourceDefinition
+// - ServiceAccount
+// - ClusterRole
+// - ClusterRoleBinding
+// - Role
+// - RoleBinding
+// - DaemonSet
+// - Pod
+// - Job
+// - HorizontalPodAutoscaler
+// If the provided kind is not supported, it returns an error.
 func Remove(ctx context.Context, name, namespace, kind string, options ...OperationOption) error {
 	var err error
 	if err = Init(); err != nil {
 		return err
 	}
-	var ops OperationOptions
+	var ops operationOptions
 	for _, option := range options {
 		option(&ops)
 	}
@@ -383,12 +442,15 @@ func Remove(ctx context.Context, name, namespace, kind string, options ...Operat
 	}
 }
 
+// Rollout performs a rollout operation on the specified Kubernetes resource.
+// It takes a context, the resource to rollout, and optional operation options.
+// The function returns an error if the rollout operation fails.
 func Rollout(ctx context.Context, item Resource, options ...OperationOption) error {
 	var err error
 	if err = Init(); err != nil {
 		return err
 	}
-	var ops OperationOptions
+	var ops operationOptions
 	for _, option := range options {
 		option(&ops)
 	}
@@ -441,19 +503,21 @@ func Rollout(ctx context.Context, item Resource, options ...OperationOption) err
 	}
 }
 
-type ListOptions struct {
+type listOptions struct {
 	pattern *regexp.Regexp
 }
 
-type ListOption func(*ListOptions)
+type ListOption func(*listOptions)
 
+// WithRegex sets the regular expression pattern for filtering items in a list.
+// It returns a ListOption function that can be used to modify list options.
 func WithRegex(p *regexp.Regexp) ListOption {
-	return func(o *ListOptions) {
+	return func(o *listOptions) {
 		o.pattern = p
 	}
 }
 
-func filter[T Resource](items []T, err error, options ListOptions) ([]T, error) {
+func filter[T Resource](items []T, err error, options listOptions) ([]T, error) {
 	if err != nil {
 		return nil, err
 	}
@@ -469,7 +533,7 @@ func filter[T Resource](items []T, err error, options ListOptions) ([]T, error) 
 	return result, nil
 }
 
-func into[T Resource, F any](from []F, err error, options ListOptions) ([]T, error, ListOptions) {
+func into[T Resource, F any](from []F, err error, options listOptions) ([]T, error, listOptions) {
 	if err != nil {
 		return nil, err, options
 	}
@@ -488,19 +552,25 @@ func into[T Resource, F any](from []F, err error, options ListOptions) ([]T, err
 
 }
 
+// List retrieves a list of resources of type T from the specified namespace.
+// It accepts a context, namespace, and optional list options.
+// The function returns a slice of resources of type T and an error.
+// The list options can be used to filter the results.
+// The function supports various resource types, such as Deployment, StatefulSet, ConfigMap, CronJob, Service, Ingress, and more.
+// If the resource type is not supported, the function returns an error.
 func List[T Resource](ctx context.Context, namespace string, options ...ListOption) ([]T, error) {
 	var err error
 	if err = Init(); err != nil {
 		return nil, err
 	}
-	var ops ListOptions
+	var ops listOptions
 	for _, option := range options {
 		option(&ops)
 	}
 	var t any = newResource[T]()
 	switch t.(type) {
 	case *Deployment:
-		return filter[T](into[T, Deployment](func() ([]Deployment, error, ListOptions) {
+		return filter[T](into[T, Deployment](func() ([]Deployment, error, listOptions) {
 			if l, err := clientset.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{}); err == nil {
 				return l.Items, nil, ops
 			} else {
@@ -508,7 +578,7 @@ func List[T Resource](ctx context.Context, namespace string, options ...ListOpti
 			}
 		}()))
 	case *StatefulSet:
-		return filter[T](into[T, StatefulSet](func() ([]StatefulSet, error, ListOptions) {
+		return filter[T](into[T, StatefulSet](func() ([]StatefulSet, error, listOptions) {
 			if l, err := clientset.AppsV1().StatefulSets(namespace).List(ctx, metav1.ListOptions{}); err == nil {
 				return l.Items, nil, ops
 			} else {
@@ -516,7 +586,7 @@ func List[T Resource](ctx context.Context, namespace string, options ...ListOpti
 			}
 		}()))
 	case *ConfigMap:
-		return filter[T](into[T, ConfigMap](func() ([]ConfigMap, error, ListOptions) {
+		return filter[T](into[T, ConfigMap](func() ([]ConfigMap, error, listOptions) {
 			if l, err := clientset.CoreV1().ConfigMaps(namespace).List(ctx, metav1.ListOptions{}); err == nil {
 				return l.Items, nil, ops
 			} else {
@@ -524,7 +594,7 @@ func List[T Resource](ctx context.Context, namespace string, options ...ListOpti
 			}
 		}()))
 	case *CronJob:
-		return filter[T](into[T, CronJob](func() ([]CronJob, error, ListOptions) {
+		return filter[T](into[T, CronJob](func() ([]CronJob, error, listOptions) {
 			if l, err := clientset.BatchV1().CronJobs(namespace).List(ctx, metav1.ListOptions{}); err == nil {
 				return l.Items, nil, ops
 			} else {
@@ -532,7 +602,7 @@ func List[T Resource](ctx context.Context, namespace string, options ...ListOpti
 			}
 		}()))
 	case *Service:
-		return filter[T](into[T, Service](func() ([]Service, error, ListOptions) {
+		return filter[T](into[T, Service](func() ([]Service, error, listOptions) {
 			if l, err := clientset.CoreV1().Services(namespace).List(ctx, metav1.ListOptions{}); err == nil {
 				return l.Items, nil, ops
 			} else {
@@ -540,7 +610,7 @@ func List[T Resource](ctx context.Context, namespace string, options ...ListOpti
 			}
 		}()))
 	case *Ingress:
-		return filter[T](into[T, Ingress](func() ([]Ingress, error, ListOptions) {
+		return filter[T](into[T, Ingress](func() ([]Ingress, error, listOptions) {
 			if l, err := clientset.NetworkingV1().Ingresses(namespace).List(ctx, metav1.ListOptions{}); err == nil {
 				return l.Items, nil, ops
 			} else {
@@ -548,7 +618,7 @@ func List[T Resource](ctx context.Context, namespace string, options ...ListOpti
 			}
 		}()))
 	case *PodDisruptionBudget:
-		return filter[T](into[T, PodDisruptionBudget](func() ([]PodDisruptionBudget, error, ListOptions) {
+		return filter[T](into[T, PodDisruptionBudget](func() ([]PodDisruptionBudget, error, listOptions) {
 			if l, err := clientset.PolicyV1().PodDisruptionBudgets(namespace).List(ctx, metav1.ListOptions{}); err == nil {
 				return l.Items, nil, ops
 			} else {
@@ -556,7 +626,7 @@ func List[T Resource](ctx context.Context, namespace string, options ...ListOpti
 			}
 		}()))
 	case *Secret:
-		return filter[T](into[T, Secret](func() ([]Secret, error, ListOptions) {
+		return filter[T](into[T, Secret](func() ([]Secret, error, listOptions) {
 			if l, err := clientset.CoreV1().Secrets(namespace).List(ctx, metav1.ListOptions{}); err == nil {
 				return l.Items, nil, ops
 			} else {
@@ -564,7 +634,7 @@ func List[T Resource](ctx context.Context, namespace string, options ...ListOpti
 			}
 		}()))
 	case *StorageClass:
-		return filter[T](into[T, StorageClass](func() ([]StorageClass, error, ListOptions) {
+		return filter[T](into[T, StorageClass](func() ([]StorageClass, error, listOptions) {
 			if l, err := clientset.StorageV1().StorageClasses().List(ctx, metav1.ListOptions{}); err == nil {
 				return l.Items, nil, ops
 			} else {
@@ -572,7 +642,7 @@ func List[T Resource](ctx context.Context, namespace string, options ...ListOpti
 			}
 		}()))
 	case *PersistentVolumeClaim:
-		return filter[T](into[T, PersistentVolumeClaim](func() ([]PersistentVolumeClaim, error, ListOptions) {
+		return filter[T](into[T, PersistentVolumeClaim](func() ([]PersistentVolumeClaim, error, listOptions) {
 			if l, err := clientset.CoreV1().PersistentVolumeClaims(namespace).List(ctx, metav1.ListOptions{}); err == nil {
 				return l.Items, nil, ops
 			} else {
@@ -580,7 +650,7 @@ func List[T Resource](ctx context.Context, namespace string, options ...ListOpti
 			}
 		}()))
 	case *PersistentVolume:
-		return filter[T](into[T, PersistentVolume](func() ([]PersistentVolume, error, ListOptions) {
+		return filter[T](into[T, PersistentVolume](func() ([]PersistentVolume, error, listOptions) {
 			if l, err := clientset.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{}); err == nil {
 				return l.Items, nil, ops
 			} else {
@@ -588,7 +658,7 @@ func List[T Resource](ctx context.Context, namespace string, options ...ListOpti
 			}
 		}()))
 	case *CustomResourceDefinition:
-		return filter[T](into[T, CustomResourceDefinition](func() ([]CustomResourceDefinition, error, ListOptions) {
+		return filter[T](into[T, CustomResourceDefinition](func() ([]CustomResourceDefinition, error, listOptions) {
 			if l, err := aeClientset.ApiextensionsV1().CustomResourceDefinitions().List(ctx, metav1.ListOptions{}); err == nil {
 				return l.Items, nil, ops
 			} else {
@@ -596,7 +666,7 @@ func List[T Resource](ctx context.Context, namespace string, options ...ListOpti
 			}
 		}()))
 	case *ServiceAccount:
-		return filter[T](into[T, ServiceAccount](func() ([]ServiceAccount, error, ListOptions) {
+		return filter[T](into[T, ServiceAccount](func() ([]ServiceAccount, error, listOptions) {
 			if l, err := clientset.CoreV1().ServiceAccounts(namespace).List(ctx, metav1.ListOptions{}); err == nil {
 				return l.Items, nil, ops
 			} else {
@@ -604,7 +674,7 @@ func List[T Resource](ctx context.Context, namespace string, options ...ListOpti
 			}
 		}()))
 	case *ClusterRole:
-		return filter[T](into[T, ClusterRole](func() ([]ClusterRole, error, ListOptions) {
+		return filter[T](into[T, ClusterRole](func() ([]ClusterRole, error, listOptions) {
 			if l, err := clientset.RbacV1().ClusterRoles().List(ctx, metav1.ListOptions{}); err == nil {
 				return l.Items, nil, ops
 			} else {
@@ -612,7 +682,7 @@ func List[T Resource](ctx context.Context, namespace string, options ...ListOpti
 			}
 		}()))
 	case *ClusterRoleBinding:
-		return filter[T](into[T, ClusterRoleBinding](func() ([]ClusterRoleBinding, error, ListOptions) {
+		return filter[T](into[T, ClusterRoleBinding](func() ([]ClusterRoleBinding, error, listOptions) {
 			if l, err := clientset.RbacV1().ClusterRoleBindings().List(ctx, metav1.ListOptions{}); err == nil {
 				return l.Items, nil, ops
 			} else {
@@ -620,7 +690,7 @@ func List[T Resource](ctx context.Context, namespace string, options ...ListOpti
 			}
 		}()))
 	case *Role:
-		return filter[T](into[T, Role](func() ([]Role, error, ListOptions) {
+		return filter[T](into[T, Role](func() ([]Role, error, listOptions) {
 			if l, err := clientset.RbacV1().Roles(namespace).List(ctx, metav1.ListOptions{}); err == nil {
 				return l.Items, nil, ops
 			} else {
@@ -628,7 +698,7 @@ func List[T Resource](ctx context.Context, namespace string, options ...ListOpti
 			}
 		}()))
 	case *RoleBinding:
-		return filter[T](into[T, RoleBinding](func() ([]RoleBinding, error, ListOptions) {
+		return filter[T](into[T, RoleBinding](func() ([]RoleBinding, error, listOptions) {
 			if l, err := clientset.RbacV1().RoleBindings(namespace).List(ctx, metav1.ListOptions{}); err == nil {
 				return l.Items, nil, ops
 			} else {
@@ -636,7 +706,7 @@ func List[T Resource](ctx context.Context, namespace string, options ...ListOpti
 			}
 		}()))
 	case *DaemonSet:
-		return filter[T](into[T, DaemonSet](func() ([]DaemonSet, error, ListOptions) {
+		return filter[T](into[T, DaemonSet](func() ([]DaemonSet, error, listOptions) {
 			if l, err := clientset.AppsV1().DaemonSets(namespace).List(ctx, metav1.ListOptions{}); err == nil {
 				return l.Items, nil, ops
 			} else {
@@ -644,7 +714,7 @@ func List[T Resource](ctx context.Context, namespace string, options ...ListOpti
 			}
 		}()))
 	case *Pod:
-		return filter[T](into[T, Pod](func() ([]Pod, error, ListOptions) {
+		return filter[T](into[T, Pod](func() ([]Pod, error, listOptions) {
 			if l, err := clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{}); err == nil {
 				return l.Items, nil, ops
 			} else {
@@ -652,7 +722,7 @@ func List[T Resource](ctx context.Context, namespace string, options ...ListOpti
 			}
 		}()))
 	case *Job:
-		return filter[T](into[T, Job](func() ([]Job, error, ListOptions) {
+		return filter[T](into[T, Job](func() ([]Job, error, listOptions) {
 			if l, err := clientset.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{}); err == nil {
 				return l.Items, nil, ops
 			} else {
@@ -660,7 +730,7 @@ func List[T Resource](ctx context.Context, namespace string, options ...ListOpti
 			}
 		}()))
 	case *HorizontalPodAutoscaler:
-		return filter[T](into[T, HorizontalPodAutoscaler](func() ([]HorizontalPodAutoscaler, error, ListOptions) {
+		return filter[T](into[T, HorizontalPodAutoscaler](func() ([]HorizontalPodAutoscaler, error, listOptions) {
 			if l, err := clientset.AutoscalingV2().HorizontalPodAutoscalers(namespace).List(ctx, metav1.ListOptions{}); err == nil {
 				return l.Items, nil, ops
 			} else {
@@ -685,6 +755,11 @@ func intoGet[T Resource, F Resource](f F, err error) (T, error) {
 	return t, nil
 }
 
+// Get retrieves a resource of type T from the Kubernetes cluster.
+// It takes a context, the name and namespace of the resource as input parameters.
+// It returns the retrieved resource of type T and an error if any.
+// The function supports various types of resources such as Deployment, StatefulSet, ConfigMap, CronJob, Service, Ingress, etc.
+// If the resource type is not supported, it returns an error indicating the unsupported type.
 func Get[T Resource](ctx context.Context, name, namespace string) (T, error) {
 	var err error
 	var r T

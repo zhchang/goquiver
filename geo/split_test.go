@@ -1,11 +1,12 @@
 package geo
 
 import (
+	"bytes"
 	"os"
 	"testing"
 )
 
-func TestSplit(t *testing.T) {
+func TestSplitManual(t *testing.T) {
 	var err error
 	igp := "./input.geojson"
 	ogp := "./output.geojson"
@@ -24,4 +25,21 @@ func TestSplit(t *testing.T) {
 		panic(err)
 	}
 	//println(string(o))
+}
+
+func TestSplit(t *testing.T) {
+	input := []byte(`{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[0,0],[0,10],[10,10],[10,0],[0,0]]]},"properties":{}}]}`)
+	expectedOutput := []byte(`{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[0,0],[0,10],[10,10],[10,0],[0,0]]]},"properties":{}}]}`)
+	depth := 3
+	cluster := 3
+
+	output, err := Split(input, depth, cluster)
+	if err != nil {
+		t.Errorf("Split() returned an error: %v", err)
+		return
+	}
+
+	if !bytes.Equal(output, expectedOutput) {
+		t.Errorf("Split() returned incorrect output.\nExpected: %s\nGot: %s", expectedOutput, output)
+	}
 }

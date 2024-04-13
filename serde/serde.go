@@ -1,3 +1,14 @@
+// Package serde provides utilities for serializing and deserializing data in different formats.
+// It uses struct field tags to determine the format to use for serialization.
+//
+// The main function in this package is MarshalDependingOnTag, which takes an interface{} as input
+// and checks the first struct field tag to determine whether to marshal the object into JSON or YAML.
+// This function assumes the object is a struct with tags.
+//
+// This package uses the "encoding/json" and "gopkg.in/yaml.v2" packages for JSON and YAML serialization respectively,
+// and the "reflect" package to inspect the struct field tags.
+//
+// The package is designed to be easy to use and flexible, allowing you to easily serialize data in the format that best suits your needs.
 package serde
 
 import (

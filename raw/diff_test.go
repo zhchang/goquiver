@@ -1,6 +1,7 @@
 package raw
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -41,4 +42,19 @@ func TestDiff(t *testing.T) {
 	dc := d["C"].(Map)
 	assert.NotNil(t, dc["E"])
 	assert.NotNil(t, dc["F"])
+}
+
+func ExampleDiff() {
+	a := testA{A: "a", B: "b", C: nested{E: "ae", F: 0}, D: "whocares"}
+	b := testB{A: "a", B: "bb", C: nested{E: "be", F: 10}}
+	var d Map
+	var err error
+	if d, err = Diff(a, b); err != nil {
+		panic(err)
+	}
+	var exists bool
+	_, exists = d["B"]
+	fmt.Printf("%t\n", exists)
+	// Output:
+	// true
 }

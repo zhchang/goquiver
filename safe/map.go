@@ -1,3 +1,14 @@
+// Package safe provides a thread-safe map implementation in Go.
+//
+// The Map struct in this package is a generic map that can hold any type of comparable keys and any type of values.
+// It uses a sync.RWMutex to ensure that it can be safely used from multiple goroutines.
+//
+// The NewMap function returns a new instance of a Map.
+//
+// The Set method on a Map sets the value for a key, acquiring the lock before doing so to ensure thread safety.
+//
+// The SetIfNotExists method on a Map sets the value for a key only if the key does not already exist in the map,
+// acquiring the lock before doing so to ensure thread safety. It returns true if the value was set, and false otherwise.
 package safe
 
 import "sync"

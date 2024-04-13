@@ -1,3 +1,13 @@
+// Package geo provides utilities for manipulating and analyzing geographical data.
+//
+// The main function in this package is Split, which splits a GeoJSON feature collection into smaller polygons.
+// It takes an input byte slice containing the GeoJSON data, a depth parameter indicating the level of splitting,
+// and a cluster parameter indicating the number of clusters to create.
+//
+// This package uses the "github.com/peterstace/simplefeatures/geom" package for handling geographical data structures
+// and operations. It provides types for GeoJSON Feature and FeatureCollection and methods for marshalling and unmarshalling GeoJSON.
+//
+// The package is designed to be easy to use and flexible, allowing you to easily manipulate geographical data in the format that best suits your needs.
 package geo
 
 import (
@@ -7,6 +17,10 @@ import (
 	"github.com/peterstace/simplefeatures/geom"
 )
 
+// Split splits a GeoJSON feature collection into smaller polygons based on the specified depth and cluster parameters.
+// It takes an input byte slice containing the GeoJSON data, the depth parameter indicating the level of splitting,
+// and the cluster parameter indicating the number of clusters to create.
+// The function returns a byte slice containing the split GeoJSON feature collection and an error if any.
 func Split(input []byte, depth, cluster int) ([]byte, error) {
 	var err error
 	var fc geom.GeoJSONFeatureCollection
