@@ -101,3 +101,66 @@ metadata:
 	assert.NoError(t, err)
 	assert.Equal(t, expected, result)
 }
+func TestEncodeYAML(t *testing.T) {
+	input := []Resource{
+		&unstructured.Unstructured{
+			Object: map[string]interface{}{
+				"apiVersion": "v1",
+				"kind":       "Pod",
+				"metadata": map[string]interface{}{
+					"name": "my-pod",
+				},
+			},
+		},
+		&unstructured.Unstructured{
+			Object: map[string]interface{}{
+				"apiVersion": "apps/v1",
+				"kind":       "Deployment",
+				"metadata": map[string]interface{}{
+					"name": "my-deployment",
+				},
+			},
+		},
+	}
+	expected := []struct {
+		name string
+		kind string
+	}{
+		{
+			name: "my-pod",
+			kind: "Pod",
+		},
+		{
+			name: "my-deployment",
+			kind: "Deployment",
+		},
+	}
+	var err error
+	var data []byte
+	var r Resource
+	for i, item := range input {
+		if data, err = EncodeYAML(item); err != nil {
+			t.Fatal(err)
+		}
+		if r, err = DecodeYAML(string(data)); err != nil {
+			t.Fatal(err)
+		}
+		assert.Equal(t, expected[i].name, r.GetName())
+	}
+}
+
+func TestEncodeYAMLAll(t *testing.T) {
+	org := EncodeYAML
+	defer func() {
+		EncodeYAML = org
+	}()
+	EncodeYAML = func(obj Resource) ([]byte, error) {
+		return []byte("abc"), nil
+	}
+	var err error
+	var data []byte
+	if data, err = EncodeYAMLAll([]Resource{nil, nil, nil, nil}); err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, "---\nabc\n---\nabc\n---\nabc\n---\nabc", string(data))
+}

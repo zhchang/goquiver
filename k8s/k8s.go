@@ -10,6 +10,7 @@
 package k8s
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -30,6 +31,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	k8sjson "k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/apimachinery/pkg/runtime/serializer/yaml"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -40,6 +42,8 @@ import (
 var clientset *kubernetes.Clientset
 var aeClientset *aeclientset.Clientset
 var once sync.Once
+
+var k8syaml = k8sjson.NewYAMLSerializer(k8sjson.DefaultMetaFactory, nil, nil)
 
 // Init initializes the k8s client, which throws error if failed to get envrioment variables: KUBECONFIG, or in-cluster config.
 func Init() error {
@@ -71,6 +75,95 @@ func Init() error {
 		}
 	})
 	return err
+}
+
+func encodeYaml[T Resource](obj Resource) ([]byte, error) {
+	var err error
+	var t T
+	if t, err = Parse[T](obj); err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err = k8syaml.Encode(t, &buf); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// EncodeYAML encodes the given resource object into YAML format.
+// It takes a Resource object as input and returns the encoded YAML data as a byte slice.
+// If the kind of the resource is supported, it uses the corresponding encodeYaml function to encode the object.
+// If the kind is not supported, it returns an error with a message indicating the unsupported kind.
+var EncodeYAML = func(obj Resource) ([]byte, error) {
+	kind := obj.GetObjectKind().GroupVersionKind().Kind
+	switch kind {
+	case KindDeployment:
+		return encodeYaml[*Deployment](obj)
+	case KindStatefulSet:
+		return encodeYaml[*StatefulSet](obj)
+	case KindConfigMap:
+		return encodeYaml[*ConfigMap](obj)
+	case KindCronJob:
+		return encodeYaml[*CronJob](obj)
+	case KindService:
+		return encodeYaml[*Service](obj)
+	case KindIngress:
+		return encodeYaml[*Ingress](obj)
+	case KindPodDisruptionBudget:
+		return encodeYaml[*PodDisruptionBudget](obj)
+	case KindSecret:
+		return encodeYaml[*Secret](obj)
+	case KindStorageClass:
+		return encodeYaml[*StorageClass](obj)
+	case KindPersistentVolumeClaim:
+		return encodeYaml[*PersistentVolumeClaim](obj)
+	case KindPersistentVolume:
+		return encodeYaml[*PersistentVolume](obj)
+	case KindCustomResourceDefinition:
+		return encodeYaml[*CustomResourceDefinition](obj)
+	case KindServiceAccount:
+		return encodeYaml[*ServiceAccount](obj)
+	case KindClusterRole:
+		return encodeYaml[*ClusterRole](obj)
+	case KindClusterRoleBinding:
+		return encodeYaml[*ClusterRoleBinding](obj)
+	case KindRole:
+		return encodeYaml[*Role](obj)
+	case KindRoleBinding:
+		return encodeYaml[*RoleBinding](obj)
+	case KindDaemonSet:
+		return encodeYaml[*DaemonSet](obj)
+	case KindPod:
+		return encodeYaml[*Pod](obj)
+	case KindJob:
+		return encodeYaml[*Job](obj)
+	case KindHorizontalPodAutoscaler:
+		return encodeYaml[*HorizontalPodAutoscaler](obj)
+	default:
+		return nil, fmt.Errorf("[encode] unsupported kind: %s", kind)
+	}
+}
+
+// EncodeYAMLAll encodes a list of resources into YAML format.
+// It takes a slice of Resource objects as input and returns the encoded YAML data as a byte array.
+// Each resource is encoded separately and separated by "---" in the output.
+// If an error occurs during encoding, it returns nil and the error.
+var EncodeYAMLAll = func(list []Resource) ([]byte, error) {
+	var buf bytes.Buffer
+	var err error
+	var data []byte
+	for _, item := range list {
+		if data, err = EncodeYAML(item); err != nil {
+			return nil, err
+		}
+		if buf.Len() != 0 {
+			buf.WriteString("\n---\n")
+		} else {
+			buf.WriteString("---\n")
+		}
+		buf.Write(data)
+	}
+	return buf.Bytes(), nil
 }
 
 // DecodeYAML decodes the provided YAML content into an unstructured Kubernetes resource.
