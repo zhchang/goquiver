@@ -206,17 +206,16 @@ func DecodeAllYAML(yamlContent string) ([]Resource, error) {
 // GenManifest generates the Kubernetes manifest from a Helm chart and values.
 // It takes a context, the path to the Helm chart, and a map of values as input.
 // It returns a slice of resources and an error.
-func GenManifest(ctx context.Context, chartPath string, values map[string]any) ([]Resource, error) {
-	var err error
+func GenManifest(ctx context.Context, chartPath string, values map[string]any) (resources []Resource, manifest string, err error) {
 	actionConfig := new(action.Configuration)
 	if err = actionConfig.Init(cli.New().RESTClientGetter(), "", os.Getenv("HELM_DRIVER"), func(format string, v ...interface{}) { fmt.Printf(format, v) }); err != nil {
-		return nil, err
+		return
 	}
 
 	// Load the chart
 	var chart *chart.Chart
 	if chart, err = loader.Load(chartPath); err != nil {
-		return nil, err
+		return
 	}
 
 	// Setup install action
@@ -229,10 +228,11 @@ func GenManifest(ctx context.Context, chartPath string, values map[string]any) (
 	// Generate the manifest from the chart and values
 	var rel *release.Release
 	if rel, err = install.Run(chart, values); err != nil {
-		return nil, err
+		return
 	}
-
-	return DecodeAllYAML(rel.Manifest)
+	manifest = rel.Manifest
+	resources, err = DecodeAllYAML(rel.Manifest)
+	return
 }
 
 func getPvcs(ctx context.Context, stsName, namespace string) ([]*PersistentVolumeClaim, error) {
