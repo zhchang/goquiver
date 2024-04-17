@@ -24,7 +24,7 @@
 //	if r, err = c.Get("test-key-2"); err != nil {
 //	    panic(err)
 //	}
-//	fmt.Println(r) // Outputs: 100
+//	fmt.Println(r) // Outputs: 100package cache
 package cache
 
 import (
@@ -38,56 +38,9 @@ import (
 
 var (
 	ErrStale       = fmt.Errorf("value is stale")
-	ErrNotFound    = fmt.Errorf("not found")
 	ErrNoRefresher = fmt.Errorf("neither value nor refresher was supplied")
+	ErrUnexpected  = fmt.Errorf("unexpected error")
 )
-
-type cacheOptions[V any] struct {
-	refresher   func() (V, error)
-	ttl         time.Duration
-	lazyRefresh bool
-	v           V
-	solid       bool
-}
-
-type CacheOption[V any] func(*cacheOptions[V])
-
-// WithRefresher sets the refresher function for the cache.
-// The refresher function is responsible for fetching the latest value for the cache.
-// It takes no arguments and returns the latest value and an error, if any.
-func WithRefresher[V any](refresher func() (V, error)) CacheOption[V] {
-	return func(opts *cacheOptions[V]) {
-		opts.refresher = refresher
-	}
-}
-
-// WithTTL sets the time-to-live (TTL) for the cache.
-// The TTL determines how long an item will remain in the cache before it expires.
-// The ttl parameter specifies the duration for the TTL.
-// The returned CacheOption function sets the ttl option in the cacheOptions struct.
-func WithTTL[V any](ttl time.Duration) CacheOption[V] {
-	return func(opts *cacheOptions[V]) {
-		opts.ttl = ttl
-	}
-}
-
-// WithLazyRefresh sets the lazyRefresh option for the cache.
-// When lazyRefresh is set to true, the cache will only refresh its data when requested.
-// This can be useful for improving performance in scenarios where the data is not frequently updated.
-func WithLazyRefresh[V any]() CacheOption[V] {
-	return func(opts *cacheOptions[V]) {
-		opts.lazyRefresh = true
-	}
-}
-
-// WithValue sets the value for the cache option.
-// It returns a CacheOption function that can be used to modify cache options.
-func WithValue[V any](v V) CacheOption[V] {
-	return func(opts *cacheOptions[V]) {
-		opts.v = v
-		opts.solid = true
-	}
-}
 
 type Cache[K comparable, V any] struct {
 	m *safe.Map[K, *cacheItem[V]]
@@ -101,14 +54,32 @@ type cacheItem[V any] struct {
 	lazyRefresh bool
 }
 
-func (c *cacheItem[V]) clone() *cacheItem[V] {
+func (ci *cacheItem[V]) clone() *cacheItem[V] {
 	return &cacheItem[V]{
-		ts:          c.ts,
-		ttl:         c.ttl,
-		refresher:   c.refresher,
-		v:           c.v,
-		lazyRefresh: c.lazyRefresh,
+		ts:          ci.ts,
+		ttl:         ci.ttl,
+		refresher:   ci.refresher,
+		v:           ci.v,
+		lazyRefresh: ci.lazyRefresh,
 	}
+}
+
+func (ci *cacheItem[V]) expired() bool {
+	return ci.ttl != 0 && ci.ts.Add(ci.ttl).Before(time.Now())
+}
+
+func (ci *cacheItem[V]) refresh() (bool, error) {
+	var v V
+	var err error
+	if ci.refresher == nil || !ci.expired() {
+		return false, nil
+	}
+	if v, err = ci.refresher(); err != nil {
+		return false, err
+	}
+	ci.v = v
+	ci.ts = time.Now()
+	return true, nil
 }
 
 type newCacheOptions struct {
@@ -152,13 +123,12 @@ func New[K comparable, V any](options ...NewCacheOption) *Cache[K, V] {
 	c := &Cache[K, V]{
 		m: safe.NewMap[K, *cacheItem[V]](),
 	}
-	go refresh[K, V](c, opts)
+	go refreshAll[K, V](c, opts)
 	return c
 }
 
-func refresh[K comparable, V any](c *Cache[K, V], opts *newCacheOptions) {
+func refreshAll[K comparable, V any](c *Cache[K, V], opts *newCacheOptions) {
 	var ci *cacheItem[V]
-	var v V
 	var exists bool
 	var err error
 	ticker := time.NewTicker(opts.interval)
@@ -170,16 +140,18 @@ func refresh[K comparable, V any](c *Cache[K, V], opts *newCacheOptions) {
 			keys := c.m.Keys()
 			for _, key := range keys {
 				if ci, exists = c.m.Get(key); exists {
-					ci = ci.clone()
-					if ci.lazyRefresh || ci.refresher == nil || ci.ttl == 0 || ci.ts.Add(ci.ttl).Before(time.Now()) {
+					if ci.lazyRefresh {
 						continue
 					}
-					if v, err = ci.refresher(); err != nil {
+					ci = ci.clone()
+					var refreshed bool
+					if refreshed, err = ci.refresh(); err != nil {
 						logrus.Warnf("failed to refresh for key: %v, %s", key, err)
 						continue
 					}
-					ci.v = v
-					ci.ts = time.Now()
+					if !refreshed {
+						continue
+					}
 					c.m.Set(key, ci)
 					logrus.Debugf("cache refreshed with key: %v", key)
 				}
@@ -194,13 +166,73 @@ func (c *Cache[K, V]) Delete(k K) {
 	c.m.Delete(k)
 }
 
-// Set sets a value in the cache with the specified key.
-// It accepts optional cache options that can be used to customize the behavior of the cache item.
-// If the cache item is not solid and no refresher function is provided, it returns an error.
-// If the refresher function is provided, it refreshes the cache item by calling the refresher function.
-// It returns an error if the refresher function returns an error.
-// The cache item is then created with the specified options and added to the cache.
-// Returns nil if the operation is successful.
+type cacheOptions[V any] struct {
+	refresher   func() (V, error)
+	ttl         time.Duration
+	lazyRefresh bool
+	v           V
+	solid       bool
+	stale       bool
+}
+
+type CacheOption[V any] func(*cacheOptions[V])
+
+// WithRefresher sets the refresher function for the cache.
+// The refresher function is responsible for fetching the latest value for the cache.
+// It takes no arguments and returns the latest value and an error, if any.
+func WithRefresher[V any](refresher func() (V, error)) CacheOption[V] {
+	return func(opts *cacheOptions[V]) {
+		opts.refresher = refresher
+	}
+}
+
+// WithTTL sets the time-to-live (TTL) for the cache.
+// The TTL determines how long an item will remain in the cache before it expires.
+// The ttl parameter specifies the duration for the TTL.
+// The returned CacheOption function sets the ttl option in the cacheOptions struct.
+func WithTTL[V any](ttl time.Duration) CacheOption[V] {
+	return func(opts *cacheOptions[V]) {
+		opts.ttl = ttl
+	}
+}
+
+// WithLazyRefresh sets the lazyRefresh option for the cache.
+// When lazyRefresh is set to true, the cache will only refresh its data when requested.
+// This can be useful for improving performance in scenarios where the data is not frequently updated.
+func WithLazyRefresh[V any]() CacheOption[V] {
+	return func(opts *cacheOptions[V]) {
+		opts.lazyRefresh = true
+	}
+}
+
+// WithValue sets the value for the cache option.
+// It returns a CacheOption function that can be used to modify cache options.
+func WithValue[V any](v V) CacheOption[V] {
+	return func(opts *cacheOptions[V]) {
+		opts.v = v
+		opts.solid = true
+	}
+}
+
+// WithStale returns a CacheOption function that sets the "stale" option to true.
+// When the "stale" option is set to true, the cache will return stale data if available.
+// note, when stale data is returned, ErrStale should be expected
+func WithStale[V any]() CacheOption[V] {
+	return func(opts *cacheOptions[V]) {
+		opts.stale = true
+	}
+}
+
+// Set sets a value in the cache for the given key.
+// It accepts optional cache options to customize the behavior.
+// If the cache is not solid and no refresher function is provided,
+// it returns an error of type ErrNoRefresher.
+// If the cache is not solid and a refresher function is provided,
+// it refreshes the value using the refresher function and sets it in the cache.
+// The refreshed value is stored with a timestamp, time-to-live (TTL),
+// lazy refresh flag, refresher function, and the value itself.
+// The key-value pair is then stored in the cache.
+// Returns an error if there was an error refreshing the value.
 func (c *Cache[K, V]) Set(k K, options ...CacheOption[V]) error {
 	opts := &cacheOptions[V]{}
 	for _, option := range options {
@@ -226,33 +258,18 @@ func (c *Cache[K, V]) Set(k K, options ...CacheOption[V]) error {
 	return nil
 }
 
-type getOptions struct {
-	stale bool
-}
-
-type GetOption func(*getOptions)
-
-// WithStale returns a GetOption function that sets the "stale" option to true.
-// When the "stale" option is set to true, the cache will return stale data if available.
-// note, when stale data is returned, ErrStale should be expected
-func WithStale() GetOption {
-	return func(opts *getOptions) {
-		opts.stale = true
-	}
-}
-
 // Get retrieves the value associated with the given key from the cache.
-// It accepts optional GetOption parameters to customize the behavior.
-// If the key is not found in the cache, it returns ErrNotFound.
-// If the cached value has expired and there is no refresher function,
-// it returns ErrNoRefresher. If the cached value has expired and there
-// is a refresher function, it calls the refresher function to get a new
-// value. If the refresher function returns an error, it returns the error.
-// If the stale option is enabled, it returns the stale value instead of
-// calling the refresher function. If the value is successfully retrieved
-// or refreshed, it updates the cache with the new value and returns it.
-func (c *Cache[K, V]) Get(k K, options ...GetOption) (V, error) {
-	opts := &getOptions{}
+// It accepts optional cache options that can be used to customize the behavior of the cache.
+// If the key is not found in the cache, it attempts to set the value using the provided options.
+// If setting the value fails, it returns an error.
+// If the key is still not found after setting the value, it returns an unexpected error.
+// If the cached value is not expired, it returns the value.
+// If the cached value is expired, it attempts to refresh the value.
+// If refreshing the value fails and the 'stale' option is enabled, it returns the stale value.
+// If refreshing the value fails and the 'stale' option is disabled, it returns an error.
+// If refreshing the value is successful, it updates the cache with the refreshed value and returns it.
+func (c *Cache[K, V]) Get(k K, options ...CacheOption[V]) (V, error) {
+	opts := &cacheOptions[V]{}
 	for _, option := range options {
 		option(opts)
 	}
@@ -260,29 +277,33 @@ func (c *Cache[K, V]) Get(k K, options ...GetOption) (V, error) {
 	var err error
 	var ci *cacheItem[V]
 	var exists bool
-	var expired bool
 	if ci, exists = c.m.Get(k); !exists {
-		return v, ErrNotFound
-	}
-	ci = ci.clone()
-	expired = ci.ttl > 0 && ci.ts.Add(ci.ttl).Before(time.Now())
-	if !expired {
+		if err = c.Set(k, options...); err != nil {
+			return v, err
+		}
+		if ci, exists = c.m.Get(k); !exists {
+			return v, ErrUnexpected
+		}
 		return ci.v, nil
 	}
-	if ci.refresher == nil {
-		if opts.stale {
-			return ci.v, ErrStale
-		}
-		return v, ErrNoRefresher
+	ci = ci.clone()
+	if !ci.expired() {
+		return ci.v, nil
 	}
-	if v, err = ci.refresher(); err != nil {
+
+	var refreshed bool
+	if refreshed, err = ci.refresh(); err != nil {
 		if opts.stale {
 			return ci.v, ErrStale
 		}
 		return v, err
 	}
-	ci.v = v
-	ci.ts = time.Now()
+	if !refreshed {
+		if opts.stale {
+			return ci.v, ErrStale
+		}
+		return ci.v, ErrNoRefresher
+	}
 	c.m.Set(k, ci)
-	return v, nil
+	return ci.v, nil
 }
