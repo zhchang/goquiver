@@ -24,6 +24,16 @@ func NewMap[K comparable, V any]() *Map[K, V] {
 	}
 }
 
+func (m *Map[K, v]) Keys() []K {
+	defer m.RUnlock()
+	m.RLock()
+	var keys []K
+	for k := range m.m {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
 func (m *Map[K, V]) Set(k K, v V) {
 	defer m.Unlock()
 	m.Lock()
