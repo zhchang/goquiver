@@ -264,7 +264,8 @@ func getPvcs(ctx context.Context, stsName, namespace string) ([]*PersistentVolum
 }
 
 type operationOptions struct {
-	wait time.Duration
+	wait           time.Duration
+	removeChildren bool
 }
 
 func (o *operationOptions) Clone(enableWait bool) *operationOptions {
@@ -282,6 +283,12 @@ type OperationOption func(*operationOptions)
 func WithWait(duration time.Duration) OperationOption {
 	return func(o *operationOptions) {
 		o.wait = duration
+	}
+}
+
+func DoNotRemoveChildren() OperationOption {
+	return func(o *operationOptions) {
+		o.removeChildren = false
 	}
 }
 
@@ -424,7 +431,11 @@ func rollout[T Resource](ctx context.Context, item Resource, api API[T], ops ope
 
 func remove[T Resource](ctx context.Context, name string, api API[T], ops operationOptions) error {
 	var err error
-	if err = api.Delete(ctx, name, metav1.DeleteOptions{}); err != nil {
+	var propagationPolicy = metav1.DeletePropagationBackground
+	if !ops.removeChildren {
+		propagationPolicy = metav1.DeletePropagationOrphan
+	}
+	if err = api.Delete(ctx, name, metav1.DeleteOptions{PropagationPolicy: &propagationPolicy}); err != nil {
 		return err
 	}
 
@@ -472,7 +483,9 @@ func Remove(ctx context.Context, name, namespace, kind string, options ...Operat
 	if err = Init(); err != nil {
 		return err
 	}
-	var ops operationOptions
+	var ops = operationOptions{
+		removeChildren: true,
+	}
 	for _, option := range options {
 		option(&ops)
 	}
