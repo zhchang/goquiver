@@ -94,6 +94,7 @@ func newWorker(wg *sync.WaitGroup, ctx context.Context) *worker {
 		ctx:    ctx,
 		wakeUp: make(chan *struct{}),
 	}
+	w.wg.Add(1)
 	go w.run()
 	return w
 }
@@ -171,6 +172,14 @@ func (w *worker) run() {
 			}()
 			close(tw.finished)
 		case <-w.ctx.Done():
+			func() {
+				w.Lock()
+				defer w.Unlock()
+				for _, task := range w.tasks {
+					task.finished <- ErrUnprocessed
+					close(task.finished)
+				}
+			}()
 			return
 		}
 	}

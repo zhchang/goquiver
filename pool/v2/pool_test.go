@@ -1,6 +1,7 @@
 package pool
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -24,6 +25,21 @@ func TestTooSlow(t *testing.T) {
 	assert.Nil(t, err3)
 	_, err4 := bp.RunAsync(NewTask(func() {}, func() time.Duration { return 30 * time.Second }), WithMaxDelay(time.Second))
 	assert.Equal(t, ErrWillTakeLonger, err4)
+}
+
+func TestCtxCancel(t *testing.T) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	cancelFunc()
+	bp := New(3, WithContext(ctx))
+	f1, err1 := bp.RunAsync(NewTask(func() { time.Sleep(time.Hour) }, func() time.Duration { return time.Hour }))
+	assert.Nil(t, err1)
+	f2, err2 := bp.RunAsync(NewTask(func() { time.Sleep(5 * time.Minute) }, func() time.Duration { return 5 * time.Minute }))
+	assert.Nil(t, err2)
+	f3, err3 := bp.RunAsync(NewTask(func() { time.Sleep(30 * time.Second) }, func() time.Duration { return 30 * time.Second }))
+	assert.Nil(t, err3)
+	assert.Equal(t, ErrUnprocessed, <-f1)
+	assert.Equal(t, ErrUnprocessed, <-f2)
+	assert.Equal(t, ErrUnprocessed, <-f3)
 }
 
 func ExampleBalancedPool() {
