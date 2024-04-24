@@ -79,11 +79,15 @@ type taskWrapper struct {
 // worker represents a worker that executes tasks.
 type worker struct {
 	sync.RWMutex
-	eta    time.Duration
-	tasks  []*taskWrapper
-	wakeUp chan *struct{}
-	wg     *sync.WaitGroup
-	ctx    context.Context
+	eta     time.Duration
+	tasks   []*taskWrapper
+	wakeUp  chan *struct{}
+	wg      *sync.WaitGroup
+	ctx     context.Context
+	ongoing struct {
+		start time.Time
+		eta   time.Duration
+	}
 }
 
 // newWorker creates a new worker with the given wait group and context.
@@ -100,10 +104,20 @@ func newWorker(wg *sync.WaitGroup, ctx context.Context) *worker {
 }
 
 // ETA returns the estimated time of arrival for the worker.
-func (w *worker) ETA() time.Duration {
+func (w *worker) getEta() time.Duration {
 	w.RLock()
 	defer w.RUnlock()
 	return w.eta
+}
+
+func (w *worker) etaWithOnGoing() time.Duration {
+	w.RLock()
+	defer w.RUnlock()
+	eta := w.eta
+	if !w.ongoing.start.IsZero() {
+		eta -= max(w.ongoing.eta, time.Since(w.ongoing.start))
+	}
+	return eta
 }
 
 // addTask adds a task to the worker's task queue and returns a channel to signal when the task is finished.
@@ -128,7 +142,7 @@ func (w *worker) Less(item btree.Item) bool {
 	if !ok {
 		return false
 	}
-	return w.ETA() < w1.ETA()
+	return w.getEta() < w1.getEta()
 }
 
 // run starts the worker's execution loop.
@@ -145,6 +159,8 @@ func (w *worker) run() {
 				if len(w.tasks) > 0 {
 					tw := w.tasks[0]
 					w.tasks = w.tasks[1:]
+					w.ongoing.start = time.Now()
+					w.ongoing.eta = tw.task.ETA()
 					return tw
 				}
 				return nil
@@ -169,6 +185,8 @@ func (w *worker) run() {
 				w.Lock()
 				defer w.Unlock()
 				w.eta -= tw.task.ETA()
+				w.ongoing.start = time.Time{}
+				w.ongoing.eta = 0
 			}()
 			close(tw.finished)
 		case <-w.ctx.Done():
@@ -261,7 +279,7 @@ func (p *BalancedPool) RunAsync(task Task, options ...RunOption) (<-chan error, 
 	}
 	worker := min.(*worker)
 	if ropts.maxDelay != 0 {
-		if worker.ETA() > ropts.maxDelay {
+		if worker.etaWithOnGoing() > ropts.maxDelay {
 			return nil, ErrWillTakeLonger
 		}
 	}
