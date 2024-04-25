@@ -1,5 +1,13 @@
 module github.com/zhchang/goquiver
 
+retract v1.0.14
+
+retract v1.0.15
+
+retract v1.0.16
+
+retract v1.0.17
+
 go 1.22.1
 
 require (
