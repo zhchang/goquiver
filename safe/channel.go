@@ -10,7 +10,6 @@ type UnlimitedChannel[T any] struct {
 	storage   []T
 	cancel    func()
 	finalized chan struct{}
-	closed    bool
 }
 
 // NewUnlimitedChannel creates a new instance of UnlimitedChannel[T].
