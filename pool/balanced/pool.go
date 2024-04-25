@@ -1,4 +1,4 @@
-// Package pool provides a BalancedPool utility, which allows for managing a pool of workers to execute tasks concurrently.
+// Package balanced provides a BalancedPool utility, which allows for managing a pool of workers to execute tasks concurrently.
 // "Balanced" because it will distribute the work load (calculated using Task.ETA()) evenly (best effort) among workers.
 //
 // The pool supports the following features:
@@ -21,7 +21,7 @@
 //	p.Schedule(&task)
 //
 // Note: This package uses the GoLLRB package for maintaining a balanced binary search tree of tasks, and the logrus package for logging.
-package pool
+package balanced
 
 import (
 	"context"
@@ -32,6 +32,7 @@ import (
 
 	btree "github.com/petar/GoLLRB/llrb"
 	"github.com/sirupsen/logrus"
+	"github.com/zhchang/goquiver/safe"
 )
 
 // ErrWorkerNotFound is an error indicating that a worker was not found in the pool.
@@ -80,8 +81,7 @@ type taskWrapper struct {
 type worker struct {
 	sync.RWMutex
 	eta     time.Duration
-	tasks   []*taskWrapper
-	wakeUp  chan *struct{}
+	tasks   *safe.UnlimitedChannel[*taskWrapper]
 	wg      *sync.WaitGroup
 	ctx     context.Context
 	ongoing struct {
@@ -93,10 +93,9 @@ type worker struct {
 // newWorker creates a new worker with the given wait group and context.
 func newWorker(wg *sync.WaitGroup, ctx context.Context) *worker {
 	w := &worker{
-		tasks:  []*taskWrapper{},
-		wg:     wg,
-		ctx:    ctx,
-		wakeUp: make(chan *struct{}),
+		tasks: safe.NewUnlimitedChannel[*taskWrapper](),
+		wg:    wg,
+		ctx:   ctx,
 	}
 	w.wg.Add(1)
 	go w.run()
@@ -115,7 +114,7 @@ func (w *worker) etaWithOnGoing() time.Duration {
 	defer w.RUnlock()
 	eta := w.eta
 	if !w.ongoing.start.IsZero() {
-		eta -= max(w.ongoing.eta, time.Since(w.ongoing.start))
+		eta -= min(w.ongoing.eta, time.Since(w.ongoing.start))
 	}
 	return eta
 }
@@ -128,11 +127,8 @@ func (w *worker) addTask(task Task) <-chan error {
 		w.Lock()
 		defer w.Unlock()
 		w.eta += teta
-		w.tasks = append(w.tasks, &taskWrapper{task: task, finished: finished})
 	}()
-	go func() {
-		w.wakeUp <- &struct{}{}
-	}()
+	w.tasks.In() <- &taskWrapper{task: task, finished: finished}
 	return finished
 }
 
@@ -150,73 +146,76 @@ func (w *worker) run() {
 	defer func() {
 		w.wg.Done()
 	}()
-	for {
-		select {
-		case <-w.wakeUp:
-			tw := func() *taskWrapper {
-				w.Lock()
-				defer w.Unlock()
-				if len(w.tasks) > 0 {
-					tw := w.tasks[0]
-					w.tasks = w.tasks[1:]
-					w.ongoing.start = time.Now()
-					w.ongoing.eta = tw.task.ETA()
-					return tw
-				}
-				return nil
-			}()
-			if tw == nil {
-				continue
-			}
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						logrus.Errorf("[Task Do Panic]: %s", string(debug.Stack()))
-					}
-				}()
-				tw.task.Do()
-			}()
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						logrus.Errorf("[Task Quota Panic]: %s", string(debug.Stack()))
-					}
-				}()
-				w.Lock()
-				defer w.Unlock()
-				w.eta -= tw.task.ETA()
-				w.ongoing.start = time.Time{}
-				w.ongoing.eta = 0
-			}()
-			close(tw.finished)
-		case <-w.ctx.Done():
-			func() {
-				w.Lock()
-				defer w.Unlock()
-				for _, task := range w.tasks {
-					task.finished <- ErrUnprocessed
-					close(task.finished)
-				}
-			}()
+	handleTw := func(tw *taskWrapper) {
+		if tw == nil {
+			//tasks channel closed
 			return
 		}
+		func() {
+			w.Lock()
+			defer w.Unlock()
+			w.ongoing.start = time.Now()
+			w.ongoing.eta = tw.task.ETA()
+		}()
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logrus.Errorf("[Task Do Panic]: %s", string(debug.Stack()))
+				}
+			}()
+			tw.task.Do()
+		}()
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logrus.Errorf("[Task ETA Panic]: %s", string(debug.Stack()))
+				}
+			}()
+			w.Lock()
+			defer w.Unlock()
+			w.eta -= tw.task.ETA()
+			w.ongoing.start = time.Time{}
+			w.ongoing.eta = 0
+		}()
+		close(tw.finished)
 	}
+outer:
+	for {
+		select {
+		case <-w.ctx.Done():
+			break outer
+		default:
+			select {
+			case <-w.ctx.Done():
+				break outer
+			case tw := <-w.tasks.Out():
+				handleTw(tw)
+			}
+		}
+	}
+
+	tws := w.tasks.Finalize()
+	for _, tw := range tws {
+		tw.finished <- ErrUnprocessed
+		close(tw.finished)
+	}
+
 }
 
-// BalancedPool represents a pool of workers that can execute tasks concurrently.
-type BalancedPool struct {
+// Pool represents a pool of workers that can execute tasks concurrently.
+type Pool struct {
 	sync.RWMutex
 	wg      sync.WaitGroup
 	workers *btree.LLRB
 	ctx     context.Context
 }
 
-// PoolOption is a function that configures the BalancedPool.
-type PoolOption func(*BalancedPool)
+// PoolOption is a function that configures the Pool.
+type PoolOption func(*Pool)
 
 // WithContext sets the context for the BalancedPool.
 func WithContext(ctx context.Context) PoolOption {
-	return func(p *BalancedPool) {
+	return func(p *Pool) {
 		if ctx != nil {
 			p.ctx = ctx
 		}
@@ -224,8 +223,8 @@ func WithContext(ctx context.Context) PoolOption {
 }
 
 // New creates a new BalancedPool with the specified number of workers and options.
-func New(workerCount int, opts ...PoolOption) *BalancedPool {
-	p := &BalancedPool{
+func New(workerCount int, opts ...PoolOption) *Pool {
+	p := &Pool{
 		workers: btree.New(),
 	}
 	for _, opt := range opts {
@@ -266,7 +265,7 @@ func WithMaxDelay(d time.Duration) RunOption {
 // If the maximum delay specified in the options is exceeded by the worker's estimated time of arrival (ETA),
 // it returns `ErrWillTakeLonger`.
 // The `finished` channel returned can be used to wait for the task to complete.
-func (p *BalancedPool) RunAsync(task Task, options ...RunOption) (<-chan error, error) {
+func (p *Pool) RunAsync(task Task, options ...RunOption) (<-chan error, error) {
 	p.Lock()
 	defer p.Unlock()
 	var ropts runOptions
@@ -291,7 +290,7 @@ func (p *BalancedPool) RunAsync(task Task, options ...RunOption) (<-chan error, 
 
 // Run executes the given task synchronously on the BalancedPool.
 // It returns an error if the task execution fails.
-func (p *BalancedPool) Run(task Task, options ...RunOption) error {
+func (p *Pool) Run(task Task, options ...RunOption) error {
 	var finished <-chan error
 	var err error
 	if finished, err = p.RunAsync(task, options...); err != nil {

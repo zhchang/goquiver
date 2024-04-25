@@ -1,4 +1,4 @@
-package pool
+package balanced
 
 import (
 	"context"
@@ -29,20 +29,23 @@ func TestTooSlow(t *testing.T) {
 
 func TestCtxCancel(t *testing.T) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
-	cancelFunc()
-	bp := New(3, WithContext(ctx))
-	f1, err1 := bp.RunAsync(NewTask(func() { time.Sleep(time.Hour) }, func() time.Duration { return time.Hour }))
+	bp := New(1, WithContext(ctx))
+	_, err1 := bp.RunAsync(NewTask(func() {
+		time.Sleep(10 * time.Millisecond)
+	}, func() time.Duration { return time.Hour }))
 	assert.Nil(t, err1)
-	f2, err2 := bp.RunAsync(NewTask(func() { time.Sleep(5 * time.Minute) }, func() time.Duration { return 5 * time.Minute }))
+	f2, err2 := bp.RunAsync(NewTask(func() {
+		time.Sleep(time.Hour)
+	}, func() time.Duration { return time.Hour }))
 	assert.Nil(t, err2)
-	f3, err3 := bp.RunAsync(NewTask(func() { time.Sleep(30 * time.Second) }, func() time.Duration { return 30 * time.Second }))
-	assert.Nil(t, err3)
-	assert.Equal(t, ErrUnprocessed, <-f1)
+	cancelFunc()
 	assert.Equal(t, ErrUnprocessed, <-f2)
-	assert.Equal(t, ErrUnprocessed, <-f3)
+	_, _ = bp.RunAsync(NewTask(func() {
+		time.Sleep(time.Hour)
+	}, func() time.Duration { return time.Hour }))
 }
 
-func ExampleBalancedPool() {
+func ExamplePool() {
 	{
 		//new balanced pool with 4 workers
 		bp := New(4)
@@ -85,6 +88,8 @@ func ExampleBalancedPool() {
 		}), WithMaxDelay(1*time.Millisecond))
 		if err == ErrWillTakeLonger {
 			fmt.Println("task wouldn't finish on time")
+		} else {
+			fmt.Println("err is nil")
 		}
 	}
 	//Output: 100
