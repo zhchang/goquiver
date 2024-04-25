@@ -13,6 +13,9 @@ type UnlimitedChannel[T any] struct {
 	closed    bool
 }
 
+// NewUnlimitedChannel creates a new instance of UnlimitedChannel[T].
+// It initializes the necessary channels and storage for the channel.
+// It also starts a goroutine to manage the channel's operations.
 func NewUnlimitedChannel[T any]() *UnlimitedChannel[T] {
 	r := &UnlimitedChannel[T]{
 		in:        make(chan T),
@@ -58,14 +61,19 @@ normal:
 	}
 }
 
+// In returns the input channel of the UnlimitedChannel.
 func (c *UnlimitedChannel[T]) In() chan T {
 	return c.in
 }
 
+// Out returns a receive-only channel of type T. This channel can be used to receive values sent to the UnlimitedChannel.
 func (c *UnlimitedChannel[T]) Out() <-chan T {
 	return c.out
 }
 
+// Finalize closes the channel and waits for the finalization to happen.
+// It returns the storage of the channel.
+// Note: Write to In() won't block even after finalize, but it won't be effective also
 func (c *UnlimitedChannel[T]) Finalize() []T {
 	c.cancel()
 	//wait for finalize to happen
