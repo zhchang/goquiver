@@ -40,8 +40,13 @@ normal:
 	for {
 		if len(c.storage) == 0 {
 			// If storage is empty, wait for new item
-			t, ok := <-c.in
-			takeIn(t, ok)
+			select {
+			case t, ok := <-c.in:
+				takeIn(t, ok)
+			case <-ctx.Done():
+				close(c.out)
+				break normal
+			}
 		}
 		select {
 		case t, ok := <-c.in:
