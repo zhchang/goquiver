@@ -921,7 +921,13 @@ func WatchPods(ctx context.Context, namespace string, options ...WatchOption) er
 	}
 	podReadyMap := map[string]bool{}
 	for _, pod := range pods {
-		podReadyMap[pod.Name] = isPodReady(pod)
+		ready := isPodReady(pod)
+		podReadyMap[pod.Name] = ready
+		if ready {
+			if opts.onAvailable != nil {
+				opts.onAvailable(pod)
+			}
+		}
 	}
 	var ok bool
 	var pod *Pod
