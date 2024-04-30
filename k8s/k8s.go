@@ -33,6 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	k8sjson "k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/apimachinery/pkg/runtime/serializer/yaml"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -859,6 +860,119 @@ func intoGet[T Resource, F Resource](f F, err error) (T, error) {
 		return t, fmt.Errorf("Wrong Value Type")
 	}
 	return t, nil
+}
+
+func isPodReady(pod *Pod) bool {
+	if pod.Status.Phase != v1.PodRunning {
+		return false
+	}
+	if len(pod.Status.ContainerStatuses) == 0 {
+		return false
+	}
+	for _, cs := range pod.Status.ContainerStatuses {
+		if !cs.Ready {
+			return false
+		}
+	}
+	return true
+}
+
+type watchOptions struct {
+	pattern       *regexp.Regexp
+	onAvailable   func(pod *Pod)
+	onUnavailable func(pod *Pod)
+}
+type WatchOption func(*watchOptions)
+
+func WithWatchRegex(pattern *regexp.Regexp) WatchOption {
+	return func(opts *watchOptions) {
+		opts.pattern = pattern
+	}
+}
+
+func WithOnAvailable(f func(*Pod)) WatchOption {
+	return func(opts *watchOptions) {
+		opts.onAvailable = f
+	}
+}
+
+func WithOnUnavailable(f func(*Pod)) WatchOption {
+	return func(opts *watchOptions) {
+		opts.onUnavailable = f
+	}
+}
+
+func WatchPods(ctx context.Context, namespace string, options ...WatchOption) error {
+	var err error
+	var opts watchOptions
+	for _, option := range options {
+		option(&opts)
+	}
+	if err = Init(); err != nil {
+		return err
+	}
+	var pods []*Pod
+	if pods, err = List[*Pod](ctx, namespace, WithRegex(opts.pattern)); err != nil {
+		return err
+	}
+	var wi watch.Interface
+	if wi, err = clientset.CoreV1().Pods(namespace).Watch(ctx, metav1.ListOptions{}); err != nil {
+		return err
+	}
+	podReadyMap := map[string]bool{}
+	for _, pod := range pods {
+		ready := isPodReady(pod)
+		podReadyMap[pod.Name] = ready
+		if ready {
+			if opts.onAvailable != nil {
+				opts.onAvailable(pod)
+			}
+		}
+	}
+	var ok bool
+	var pod *Pod
+	for {
+		select {
+		case <-ctx.Done():
+			wi.Stop()
+			return nil
+		case event, chanOpen := <-wi.ResultChan():
+			if !chanOpen {
+				return nil
+			}
+			if pod, ok = event.Object.(*Pod); !ok {
+				continue
+			}
+			if opts.pattern != nil && !opts.pattern.MatchString(pod.Name) {
+				continue
+			}
+			switch event.Type {
+			case watch.Modified:
+				current := podReadyMap[pod.Name]
+				ready := isPodReady(pod)
+				if current != ready {
+					if ready {
+						if opts.onAvailable != nil {
+							opts.onAvailable(pod)
+						}
+					} else {
+						if opts.onUnavailable != nil {
+							opts.onUnavailable(pod)
+						}
+					}
+				}
+				podReadyMap[pod.Name] = ready
+			case watch.Deleted:
+				current := podReadyMap[pod.Name]
+				if current {
+					if opts.onUnavailable != nil {
+						opts.onUnavailable(pod)
+					}
+				}
+				podReadyMap[pod.Name] = false
+			}
+		}
+	}
 }
 
 // Get retrieves a resource of type T from the Kubernetes cluster.
