@@ -66,6 +66,9 @@ spec:
 }
 func TestDecodeAllYAML(t *testing.T) {
 	yamlContent := `
+---
+# haha
+---
 apiVersion: v1
 kind: Pod
 metadata:
