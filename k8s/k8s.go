@@ -510,11 +510,11 @@ func Remove(ctx context.Context, name, namespace, kind string, options ...Operat
 	case KindDeployment:
 		return remove[*Deployment](ctx, name, clientset.AppsV1().Deployments(namespace), ops)
 	case KindStatefulSet:
-		if err = remove[*StatefulSet](ctx, name, clientset.AppsV1().StatefulSets(namespace), ops); err != nil {
-			return err
-		}
 		var pvcs []*PersistentVolumeClaim
 		if pvcs, err = getPvcs(ctx, name, namespace); err != nil {
+			return err
+		}
+		if err = remove[*StatefulSet](ctx, name, clientset.AppsV1().StatefulSets(namespace), ops); err != nil {
 			return err
 		}
 		for _, pvc := range pvcs {
