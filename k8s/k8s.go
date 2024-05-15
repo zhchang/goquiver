@@ -179,6 +179,8 @@ func DecodeYAML(yamlContent string) (Resource, error) {
 	return obj, nil
 }
 
+var commentRegex = regexp.MustCompile(`^\s*#`)
+
 // DecodeAllYAML decodes a YAML manifest into a slice of Kubernetes resources.
 // It splits the YAML content into individual documents, trims spaces, and decodes each document into a Kubernetes resource.
 // The decoded resources are returned as a slice.
@@ -191,9 +193,23 @@ func DecodeAllYAML(yamlContent string) ([]Resource, error) {
 	for _, doc := range docs {
 		// Trim spaces and skip if empty
 		doc = strings.TrimSpace(doc)
-		if doc == "" {
+		doc = strings.ReplaceAll(doc, "\r", "")
+		lines := strings.Split(doc, "\n")
+		nonCommentLines := []string{}
+		for _, line := range lines {
+			if commentRegex.MatchString(line) {
+				continue
+			}
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			nonCommentLines = append(nonCommentLines, line)
+		}
+
+		if len(nonCommentLines) == 0 {
 			continue
 		}
+		doc = strings.Join(nonCommentLines, "\n")
 		var obj Resource
 		// Decode the YAML to a Kubernetes object
 		if obj, err = DecodeYAML(doc); err != nil {
