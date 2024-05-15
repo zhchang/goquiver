@@ -6,8 +6,8 @@ import (
 	"regexp"
 
 	"cloud.google.com/go/firestore"
-	"github.com/googleapis/gax-go/v2/apierror"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var (
@@ -86,17 +86,10 @@ func (f *FireStore) Create(ctx context.Context, path string, data map[string]any
 		return ErrInvalid
 	}
 	if _, err = doc.Create(ctx, data); err != nil {
-		switch t := err.(type) {
-		case *apierror.APIError:
-			if t.GRPCStatus() == nil {
-				return err
-			}
-			if t.GRPCStatus().Code() == codes.AlreadyExists {
-				return ErrExists
-			}
-		default:
-			return err
+		if status.Code(err) == codes.AlreadyExists {
+			return ErrExists
 		}
+		return err
 	}
 	return nil
 }
