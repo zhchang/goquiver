@@ -170,3 +170,12 @@ func (f *FireStore) List(ctx context.Context, path string, condition *Condition)
 	}
 	return docs, nil
 }
+
+func (f *FireStore) RawCollectionRef(ctx context.Context, path string) (*firestore.CollectionRef, error) {
+	path = f.prefix(path)
+	col := f.client.Collection(path)
+	if col == nil {
+		return nil, ErrInvalid
+	}
+	return col, nil
+}
