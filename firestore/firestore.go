@@ -179,3 +179,16 @@ func (f *FireStore) RawCollectionRef(ctx context.Context, path string) (*firesto
 	}
 	return col, nil
 }
+
+func (f *FireStore) AtomicAdd(ctx context.Context, path, field string, amount any) error {
+	var err error
+	path = f.prefix(path)
+	doc := f.client.Doc(path)
+	if doc == nil {
+		return ErrInvalid
+	}
+	if _, err = doc.Update(ctx, []firestore.Update{{Path: field, Value: firestore.Increment(amount)}}); err != nil {
+		return err
+	}
+	return nil
+}
