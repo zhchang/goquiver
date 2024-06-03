@@ -129,6 +129,9 @@ func (f *FireStore) Get(ctx context.Context, path string) (map[string]any, error
 	}
 	var ds *firestore.DocumentSnapshot
 	if ds, err = doc.Get(ctx); err != nil {
+		if status.Code(err) == codes.NotFound {
+			return nil, ErrNotFound
+		}
 		return nil, err
 	}
 	if ds == nil {
