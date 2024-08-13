@@ -141,9 +141,11 @@ func (f *FireStore) Get(ctx context.Context, path string) (map[string]any, error
 }
 
 type Condition struct {
-	Path  string
-	Op    string
-	Value any
+	Path   string
+	Op     string
+	Value  any
+	Offset int
+	Limit  int
 }
 
 func (f *FireStore) List(ctx context.Context, path string, condition *Condition) ([]*Document, error) {
@@ -154,11 +156,19 @@ func (f *FireStore) List(ctx context.Context, path string, condition *Condition)
 		return nil, ErrInvalid
 	}
 	var di *firestore.DocumentIterator
+	var query firestore.Query = col.Query
 	if condition != nil {
-		di = col.Where(condition.Path, condition.Op, condition.Value).Documents(ctx)
-	} else {
-		di = col.Documents(ctx)
+		if condition.Offset > 0 {
+			query = query.Offset(condition.Offset)
+		}
+		if condition.Limit > 0 {
+			query = query.Limit(condition.Limit)
+		}
+		if condition.Path != "" {
+			query = query.Where(condition.Path, condition.Op, condition.Value)
+		}
 	}
+	di = query.Documents(ctx)
 
 	var docs []*Document
 	var dss []*firestore.DocumentSnapshot
